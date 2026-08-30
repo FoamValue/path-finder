@@ -30,8 +30,8 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 
 ```
 path-finder/
-├── server/                    # 后端（Spring Boot Maven 单模块，包 com.pathfinder）
-│   └── src/main/java/com/pathfinder/
+├── server/                    # 后端（Spring Boot Maven 单模块，包 cn.chenxinjie.pathfinder）
+│   └── src/main/java/cn/chenxinjie/pathfinder/
 │       ├── config/            # 安全/Redis/上传组件/异常/调度器/Seed
 │       ├── controller/        # auth/user/dept/file/recycle/log/storage/upload
 │       ├── service/           # 业务服务与数据权限判定

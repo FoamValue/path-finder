@@ -59,4 +59,4 @@ upload-file:
 logging:
   level:
     root: info
-    com.pathfinder: info
+    cn.chenxinjie.pathfinder: info

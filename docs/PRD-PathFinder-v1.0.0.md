@@ -281,7 +281,7 @@ path-finder/
 │   └── config/                      #   UmiJS 配置（routes、proxy、theme）
 ├── server/                          # 后端代码目录（Spring Boot Maven 单模块）
 │   ├── src/main/
-│   │   ├── java/com/pathfinder/
+│   │   ├── java/cn/chenxinjie/pathfinder/
 │   │   │   ├── config/              #   配置类（Security、Web、Redis、上传组件）
 │   │   │   ├── controller/          #   控制器（auth / user / dept / file / log）
 │   │   │   ├── service/             #   业务服务层
@@ -292,7 +292,7 @@ path-finder/
 │   │   └── resources/
 │   │       ├── application.yml      #   通用配置（多环境 profile 覆盖）
 │   │       └── db/                  #   SQL 初始化脚本
-│   └── src/test/java/com/pathfinder/   # 后端自动化测试代码目录（JUnit 5）
+│   └── src/test/java/cn/chenxinjie/pathfinder/   # 后端自动化测试代码目录（JUnit 5）
 │       ├── controller/              #   接口/集成测试
 │       ├── service/                 #   服务单元测试
 │       └── security/                #   鉴权与数据权限测试
@@ -305,7 +305,7 @@ path-finder/
 |---|---|---|
 | `docs/` | 文档目录：PRD、技术设计、API 契约、图片附件 | — |
 | `frontend/` | 前端代码目录：React + Ant Design Pro（UmiJS），`src/` 放业务源码，`tests/` 放自动化测试 | `frontend/tests/unit`（Jest）、`frontend/tests/e2e`（Playwright） |
-| `server/` | 后端代码目录：Spring Boot Maven 单模块，`src/main` 放业务源码，`src/test` 放自动化测试 | `server/src/test/java/com/pathfinder/`（JUnit 5） |
+| `server/` | 后端代码目录：Spring Boot Maven 单模块，`src/main` 放业务源码，`src/test` 放自动化测试 | `server/src/test/java/cn/chenxinjie/pathfinder/`（JUnit 5） |
 | `docker/` | 部署编排：前端 `nginx:alpine`、后端、Redis 9、MySQL 的镜像与 compose 配置 | — |
 | `scripts/` | 运维脚本：备份（存储目录 + MySQL + Redis）、部署、健康检查 | — |
 | `.github/` | CI/CD：构建、测试执行与覆盖率门禁 | — |

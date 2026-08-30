@@ -11,7 +11,7 @@
         <relativePath/>
     </parent>
 
-    <groupId>com.pathfinder</groupId>
+    <groupId>cn.chenxinjie</groupId>
     <artifactId>pathfinder-server</artifactId>
     <version>1.0.0</version>
     <name>PathFinder Server</name>
