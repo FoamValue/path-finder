@@ -22,7 +22,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 | 前端 | React 18 · TypeScript · Ant Design 5 / ProComponents · Vite |
 | 后端 | JDK 26 · Spring Boot 4.1.1 · Spring Security · Spring Data JPA · Jackson 3 |
 | 缓存 | Redis 9（会话 / 验证码 / 锁定 / 元数据缓存，TTL 固定基础值 + 随机抖动防雪崩） |
-| 数据库 | MySQL 8（生产）/ H2（开发） |
+| 数据库 | MySQL 8 |
 | 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.3`（core 手动装配，接口契约与组件一致） |
 | 部署 | Docker Compose · nginx:alpine · TLS |
 
@@ -62,11 +62,11 @@ path-finder/
 
 ```bash
 cd server
-mvn spring-boot:run -Dspring-boot.run.profiles=h2
+mvn spring-boot:run
 # 服务地址 http://localhost:8080
 ```
 
-> 开发默认 H2 内存库（重启重置数据）；生产使用 MySQL，见 `application-mysql.yml`。
+> 数据库为 MySQL 8（`pathfinder` 库，需先就绪）；连接参数见下方环境变量。
 
 ### 2. 启动前端
 
@@ -89,9 +89,8 @@ npm run dev
 
 | 变量 | 默认 | 说明 |
 |---|---|---|
-| `SPRING_PROFILES_ACTIVE` | `h2` | `h2` 开发 / `mysql` 生产 |
+| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DB` / `MYSQL_USER` / `MYSQL_PASSWORD` | localhost / 3306 / pathfinder / pathfinder / pathfinder123 | MySQL 连接（默认主配置，无需 profile） |
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | localhost / 6379 / 空 | Redis 连接 |
-| `MYSQL_HOST` / `MYSQL_USER` / `MYSQL_PASSWORD` / `MYSQL_DB` | — | MySQL 连接（mysql profile） |
 | `STORAGE_ROOT` | `./data/storage` | 文件存储根目录（files/upload/del/tmp/archive） |
 | `RSA_PRIVATE_KEY_PATH` | 空 | RSA 私钥文件路径，生产挂载持久化，避免重启后密钥变更 |
 

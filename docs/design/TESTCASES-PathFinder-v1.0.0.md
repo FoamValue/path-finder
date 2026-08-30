@@ -12,13 +12,13 @@
 
 | 类别 | 工具 | 覆盖模块 |
 |---|---|---|
-| 后端单元/集成 | JUnit 5 + Mockito + H2 | 鉴权、锁定、踢出、数据权限、归属变更、审计 |
+| 后端单元/集成 | JUnit 5 + Mockito + MySQL 8（测试库） | 鉴权、锁定、踢出、数据权限、归属变更、审计 |
 | 组件联调 | 集成测试直连 `upload-file` | 分片、断点续传、秒传、mergeAsync、Range |
 | 前端单测 | Jest + React Testing Library | 登录、上传交互、权限渲染、列表检索 |
 | E2E | Playwright | 关键全流程 |
 | 性能 | 压测脚本 | 真分页、并发上传、搜索 |
 
-环境：开发 H2 / 联调 MySQL 8 + Redis 9；大文件测试数据：1MB、5MB+、200MB、500MB。
+环境：MySQL 8 + Redis 9；大文件测试数据：1MB、5MB+、200MB、500MB。
 
 ---
 

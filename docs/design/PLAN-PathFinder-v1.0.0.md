@@ -50,7 +50,7 @@
 |---|---|---|---|
 | PF-001 | 后端 Maven 骨架（Spring Boot 4.1.1，JDK 26），集成 Security/JPA/Redis；`BaseEntity`、全局异常、统一响应 | 1d | `mvn spring-boot:run` 启动；健康检查通过 |
 | PF-002 | 前端脚手架（Ant Design Pro / UmiJS + TS strict），路由 + `access.ts` 骨架，登录页占位 | 1d | `npm run dev` 可访问 |
-| PF-003 | 数据库初始化：PRD/TSDD 全部 DDL + Flyway（含 `V2__seed.sql`：四角色、根部门、首个 `admin` 账号，初始密码首登强制改密，见 TSDD 3.4） | 0.5d | 建表脚本在 H2/MySQL 均可执行；Seed 后 `admin` 可登录且强制改密 |
+| PF-003 | 数据库初始化：PRD/TSDD 全部 DDL + Flyway（含 `V2__seed.sql`：四角色、根部门、首个 `admin` 账号，初始密码首登强制改密，见 TSDD 3.4） | 0.5d | 建表脚本在 MySQL 8 可执行；Seed 后 `admin` 可登录且强制改密 |
 | PF-004 | **组件 POC**：引入 `cn.chenxinjie:upload-file:1.0.0-rc.3`（starter + store-redis），验证 `/upload /download` 与 Spring Boot 4.1.1 / Redis 9 / JDK 26 兼容 | 2d | 分片上传/断点续传/Range 下载 POC 通过；产出集成结论；失败则给出降级方案（TSDD 11） |
 | PF-005 | CI 流水线：`main` 分支 PR 触发 build + test + 覆盖率门禁（JaCoCo/Jest）+ Checkstyle/ESLint | 1d | PR 自动运行且门禁生效 |
 
@@ -127,7 +127,7 @@
 | 层次 | 工具 | 范围 | 门禁 |
 |---|---|---|---|
 | 单元测试 | JUnit 5 / Mockito | Service 逻辑、数据权限判定、锁定/踢出、归属变更 | 核心模块行覆盖 ≥85% |
-| 集成测试 | Spring Boot Test + H2 | Controller 契约、真分页、审计落库 | 整体 ≥80% |
+| 集成测试 | Spring Boot Test + MySQL 8（测试库） | Controller 契约、真分页、审计落库 | 整体 ≥80% |
 | 组件联调 | 集成测试直连组件 | 分片/断点续传/mergeAsync/Range | 端到端通过 |
 | 前端单测 | Jest + RTL | 登录交互、上传流程、权限渲染、列表检索 | ≥70% |
 | E2E | Playwright | S4 全流程 | 关键路径通过 |

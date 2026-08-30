@@ -246,7 +246,7 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 层面 | 方案 |
 |---|---|
 | 前端 | React 18 + Ant Design Pro（UmiJS 框架）+ TypeScript，按角色动态渲染侧边栏与页面 |
-| 后端 | JDK 26 + Spring Boot 4.1.1 + Spring Security + Spring Data JPA + MySQL 8（生产）/ H2（开发） |
+| 后端 | JDK 26 + Spring Boot 4.1.1 + Spring Security + Spring Data JPA + MySQL 8（唯一数据库） |
 | 缓存 | Redis 9：会话/Token 存储、文件元信息缓存、部门树与用户信息缓存、登录失败计数（锁定） |
 | 鉴权 | Spring Security + Redis 会话管理（单会话，多登录踢出）；图片验证码（Redis 一次性校验）；前端 RSA 公钥加密密码传输、后端 BCrypt 校验；登录失败计数落 Redis（连续 5 次锁定 10 分钟）；自定义登录成功/失败处理器 |
 | 大文件传输 | 集成 `cn.chenxinjie:upload-file:1.0.0-rc.3`（`upload-file-spring-boot-starter` + `upload-file-store-redis`）实现分片上传 / 断点续传 / MD5 校验 / 异步合并 / 过期任务清理；Range 断点下载由 PathFinder 下载端点实现（语义与组件一致），接口契约见 F8/F4 |
