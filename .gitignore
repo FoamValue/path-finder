@@ -1,0 +1,24 @@
+# Java / Maven
+server/target/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+
+# Node
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# 运行时数据
+server/data/
+data/
+backups/
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+*.iml
+
+# 日志
+*.log

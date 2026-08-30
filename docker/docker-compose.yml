@@ -1,0 +1,75 @@
+services:
+  mysql:
+    image: mysql:8.0
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:-root123456}
+      MYSQL_DATABASE: pathfinder
+      MYSQL_USER: ${MYSQL_USER:-pathfinder}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pathfinder123}
+    command: --character-set-server=utf8mb4 --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-p${MYSQL_ROOT_PASSWORD:-root123456}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:9-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--requirepass", "${REDIS_PASSWORD:-pathfinder123}"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD:-pathfinder123}", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  server:
+    build:
+      context: ..
+      dockerfile: docker/server.Dockerfile
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: mysql
+      MYSQL_HOST: mysql
+      MYSQL_PORT: 3306
+      MYSQL_DB: pathfinder
+      MYSQL_USER: ${MYSQL_USER:-pathfinder}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-pathfinder123}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD:-pathfinder123}
+      STORAGE_ROOT: /data/storage
+      RSA_PRIVATE_KEY_PATH: /data/keys/private.pem
+    volumes:
+      - storage-data:/data/storage
+      - rsa-key:/data/keys
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+  nginx:
+    build:
+      context: ..
+      dockerfile: docker/nginx.Dockerfile
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+    depends_on:
+      - server
+
+volumes:
+  mysql-data:
+  redis-data:
+  storage-data:
+  rsa-key:
+  certs:
