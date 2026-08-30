@@ -15,6 +15,7 @@ import {
 import { UploadOutlined, DownloadOutlined, DeleteOutlined, EditOutlined, SwapOutlined } from '@ant-design/icons';
 import { get, post, put, del } from '../api/client';
 import { formatSize } from '../utils/file';
+import { flatDepts } from '../utils/dept';
 import UploadModal from '../components/UploadModal';
 import type { AuthUser, DeptNode, FileInfo, UserVo } from '../api/types';
 
@@ -203,7 +204,7 @@ export default function FileList() {
           style={{ width: 180 }}
           value={deptId}
           onChange={(v) => { setDeptId(v); setPageNum(1); }}
-          options={deptTree.map((d) => ({ value: d.id, label: d.name }))}
+          options={flatDepts(deptTree)}
           optionFilterProp="label"
         />
         <Typography.Text type="secondary">共 {total} 个文件</Typography.Text>
@@ -253,7 +254,7 @@ export default function FileList() {
               style={{ width: '100%' }}
               value={ownerDept}
               onChange={setOwnerDept}
-              options={deptTree.map((d) => ({ value: d.id, label: d.name }))}
+              options={flatDepts(deptTree)}
               optionFilterProp="label"
             />
           )}

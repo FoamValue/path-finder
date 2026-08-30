@@ -1,5 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
-import { runUpload, type UploadApi } from './uploadTask';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { runUpload, defaultUploadApi, type UploadApi } from './uploadTask';
 
 function mockApi(overrides: Partial<UploadApi> = {}): UploadApi & {
   calls: { chunks: number[]; merged: boolean; confirmed: boolean; tickets: number };
@@ -43,6 +43,10 @@ function makeFile(name: string, size: number): File {
 }
 
 describe('runUpload（分片上传核心流程）', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
   it('单分片上传成功：mergeAsync → SUCCEEDED → confirm', async () => {
     const api = mockApi();
     const progress: number[] = [];
@@ -96,5 +100,54 @@ describe('runUpload（分片上传核心流程）', () => {
       }),
     ).rejects.toThrow('合并超时');
     expect(api.calls.confirmed).toBe(false);
+  });
+});
+
+describe('defaultUploadApi（真实默认实现）', () => {
+  beforeEach(() => {
+    localStorage.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it('兼容组件裸对象响应（无 {code} 包装），上传全流程成功', async () => {
+    localStorage.setItem('pf_token', 'tok');
+    const calls: string[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string, init?: RequestInit) => {
+        calls.push(String(init?.method ?? 'GET') + ' ' + url.split('?')[0]);
+        const json = (data: unknown) =>
+          new Response(JSON.stringify(data), { status: 200 });
+        // /api/** 走 client.ts 的 ApiResponse 包装
+        if (url.includes('/api/file/uploadTicket')) {
+          return json({ code: 0, message: 'success', data: { identifier: 'id-x', fileId: 9 } });
+        }
+        if (url.includes('/api/file/9/confirm')) {
+          return json({ code: 0, message: 'success', data: null });
+        }
+        // /upload 组件端点返回裸对象（无 code 字段）
+        if (url.includes('action=progress')) {
+          return json({ uploadedChunks: [], identifier: 'id-x' });
+        }
+        if (url.includes('action=mergeAsync')) {
+          return json({ state: 'PENDING', identifier: 'id-x' });
+        }
+        if (url.includes('action=mergeStatus')) {
+          return json({ state: 'SUCCEEDED', identifier: 'id-x' });
+        }
+        if (url.endsWith('/upload')) {
+          return json({ merged: false, uploadedChunks: [0] });
+        }
+        return json({});
+      }),
+    );
+
+    await runUpload(makeFile('a.txt', 10), 'PUBLIC', undefined, {
+      api: defaultUploadApi,
+      pollIntervalMs: 1,
+    });
+    expect(calls).toContain('POST /upload');
+    expect(calls).toContain('GET /upload');
+    expect(calls).toContain('POST /api/file/9/confirm');
   });
 });

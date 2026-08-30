@@ -4,6 +4,8 @@ import { InboxOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { formatSize } from '../utils/file';
 import { runUpload } from '../utils/uploadTask';
+import { logger } from '../utils/logger';
+import { flatDepts } from '../utils/dept';
 import type { DeptNode } from '../api/types';
 
 interface UploadItem {
@@ -19,15 +21,6 @@ interface Props {
   onClose: () => void;
   onSuccess: () => void;
   deptTree: DeptNode[];
-}
-
-function flatDepts(nodes: DeptNode[], depth = 0): { id: number; label: string }[] {
-  const out: { id: number; label: string }[] = [];
-  for (const n of nodes) {
-    out.push({ id: n.id, label: `${'　'.repeat(depth)}${n.name}` });
-    out.push(...flatDepts(n.children || [], depth + 1));
-  }
-  return out;
 }
 
 export default function UploadModal({ open, onClose, onSuccess, deptTree }: Props) {
@@ -78,13 +71,16 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
     let errorCount = 0;
     for (const f of fileList) {
       const file = f.originFileObj as File;
+      logger.info(`[UploadModal] 开始上传 uid=${f.uid} name=${file.name} size=${file.size}`);
       try {
         await runUpload(file, spaceType, deptId, {
           onProgress: (p) => updateItem(f.uid, { progress: p }),
         });
         updateItem(f.uid, { progress: 100, status: 'done' });
+        logger.info(`[UploadModal] 上传完成 ${file.name}`);
       } catch (e: any) {
         errorCount++;
+        logger.error(`[UploadModal] 上传失败 ${file.name}`, e.message, e);
         updateItem(f.uid, { status: 'error', error: e.message || '上传失败' });
       }
     }

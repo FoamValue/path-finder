@@ -1,4 +1,5 @@
 import type { ApiResponse } from './types';
+import { logger } from '../utils/logger';
 
 const TOKEN_KEY = 'pf_token';
 
@@ -23,8 +24,11 @@ export class ApiError extends Error {
   }
 }
 
-async function handleResponse<T>(resp: Response): Promise<T> {
+async function handleResponse<T>(resp: Response, url: string): Promise<T> {
+  const text = await resp.text();
+  logger.info(`HTTP ${resp.status} <- ${url}`, text.slice(0, 300));
   if (resp.status === 401) {
+    logger.warn('401 未登录或会话失效，清除 token 并跳转登录页');
     clearToken();
     if (!location.pathname.startsWith('/login')) {
       location.href = '/login';
@@ -32,17 +36,18 @@ async function handleResponse<T>(resp: Response): Promise<T> {
     throw new ApiError(401, '未登录或会话已失效');
   }
   if (resp.status === 403) {
-    const body = await resp.text();
-    throw new ApiError(403, body || '无权限');
+    logger.error('403 无权限', text);
+    throw new ApiError(403, text || '无权限');
   }
-  const text = await resp.text();
   let json: ApiResponse<T>;
   try {
     json = JSON.parse(text);
   } catch {
+    logger.error('响应解析失败', text.slice(0, 300));
     throw new ApiError(resp.status, text || '响应解析失败');
   }
   if (json.code !== 0) {
+    logger.error(`业务错误 code=${json.code} msg=${json.message}`);
     throw new ApiError(json.code, json.message || '请求失败');
   }
   return json.data;
@@ -61,8 +66,19 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
     headers['Content-Type'] = 'application/json';
     body = JSON.stringify(body);
   }
-  const resp = await fetch(url, { ...options, headers, body });
-  return handleResponse<T>(resp);
+  const method = options.method ?? 'GET';
+  logger.info(`HTTP ${method} -> ${url}`);
+  try {
+    const resp = await fetch(url, { ...options, headers, body });
+    return await handleResponse<T>(resp, url);
+  } catch (e) {
+    // 业务错误（ApiError）已携带具体原因，直接透传；仅真正的网络异常才包装提示
+    if (e instanceof ApiError) {
+      throw e;
+    }
+    logger.error(`网络请求失败: ${method} ${url}`, e);
+    throw new ApiError(0, '网络请求失败，请检查网络或后端服务');
+  }
 }
 
 export const get = <T>(url: string): Promise<T> => request<T>(url);

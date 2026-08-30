@@ -1,5 +1,6 @@
-import { get, post } from '../api/client';
+import { post } from '../api/client';
 import { chunkMd5 } from './file';
+import { logger } from './logger';
 
 export const CHUNK_SIZE = 5 * 1024 * 1024;
 export const DEFAULT_POLL_INTERVAL_MS = 1000;
@@ -19,6 +20,14 @@ export interface UploadApi {
   confirm(fileId: number): Promise<unknown>;
 }
 
+const authHeaders = (): Record<string, string> => ({
+  Authorization: `Bearer ${localStorage.getItem('pf_token')}`,
+});
+
+/**
+ * 注意：与组件端点（/upload?action=progress|mergeAsync|mergeStatus）交互返回的是
+ * 组件裸对象（无 {code,...} 包装），不能走 client.ts 的 ApiResponse 校验，需直接 fetch。
+ */
 export const defaultUploadApi: UploadApi = {
   uploadTicket: (p) =>
     post('/api/file/uploadTicket', {
@@ -27,19 +36,42 @@ export const defaultUploadApi: UploadApi = {
       spaceType: p.spaceType,
       deptId: p.deptId,
     }),
-  getProgress: (identifier) => get(`/upload?action=progress&identifier=${identifier}`),
+  getProgress: async (identifier) => {
+    const resp = await fetch(`/upload?action=progress&identifier=${identifier}`, { headers: authHeaders() });
+    if (!resp.ok) {
+      throw new Error(`查询进度失败（HTTP ${resp.status}）`);
+    }
+    return resp.json();
+  },
   uploadChunk: async (form) => {
     const resp = await fetch('/upload', {
       method: 'POST',
-      headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
+      headers: authHeaders(),
       body: form,
     });
     if (!resp.ok) {
-      throw new Error(`分片上传失败（HTTP ${resp.status}）`);
+      const body = await resp.text();
+      logger.error(`分片上传失败 HTTP ${resp.status}`, body.slice(0, 500));
+      throw new Error(`分片上传失败（HTTP ${resp.status}）：${body.slice(0, 200)}`);
     }
   },
-  mergeAsync: (identifier) => post(`/upload?action=mergeAsync&identifier=${identifier}`),
-  mergeStatus: (identifier) => get(`/upload?action=mergeStatus&identifier=${identifier}`),
+  mergeAsync: async (identifier) => {
+    const resp = await fetch(`/upload?action=mergeAsync&identifier=${identifier}`, {
+      method: 'POST',
+      headers: authHeaders(),
+    });
+    if (!resp.ok) {
+      throw new Error(`提交合并失败（HTTP ${resp.status}）`);
+    }
+    return resp.json();
+  },
+  mergeStatus: async (identifier) => {
+    const resp = await fetch(`/upload?action=mergeStatus&identifier=${identifier}`, { headers: authHeaders() });
+    if (!resp.ok) {
+      throw new Error(`查询合并状态失败（HTTP ${resp.status}）`);
+    }
+    return resp.json();
+  },
   confirm: (fileId) => post(`/api/file/${fileId}/confirm`),
 };
 
@@ -69,6 +101,7 @@ export async function runUpload(
   const sleep = options.sleep ?? defaultSleep;
   const onProgress = options.onProgress;
 
+  logger.info(`[上传] 开始 file=${file.name} size=${file.size} space=${spaceType}`);
   const ticket = await api.uploadTicket({
     fileName: file.name,
     fileSize: file.size,
@@ -77,10 +110,12 @@ export async function runUpload(
   });
   const { identifier, fileId } = ticket;
   const chunkTotal = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
+  logger.info(`[上传] uploadTicket 成功 identifier=${identifier} fileId=${fileId} chunkTotal=${chunkTotal}`);
 
   // 断点续传：查询已上传分片并跳过
   const progress = await api.getProgress(identifier);
   const uploaded = new Set(progress.uploadedChunks || []);
+  logger.info(`[上传] 已上传分片=${[...uploaded].join(',') || '无'}`);
 
   for (let i = 0; i < chunkTotal; i++) {
     if (uploaded.has(i)) {
@@ -97,12 +132,19 @@ export async function runUpload(
     form.append('chunkTotal', String(chunkTotal));
     form.append('chunkIndex', String(i));
     form.append('chunkMd5', await chunkMd5(blob));
-    await api.uploadChunk(form);
+    try {
+      await api.uploadChunk(form);
+      logger.info(`[上传] 分片 ${i + 1}/${chunkTotal} 成功`);
+    } catch (e: any) {
+      logger.error(`[上传] 分片 ${i + 1}/${chunkTotal} 失败`, e.message);
+      throw e;
+    }
     onProgress?.(Math.round(((i + 1) / chunkTotal) * 90));
   }
 
   onProgress?.(92);
   await api.mergeAsync(identifier);
+  logger.info('[上传] 已提交异步合并 mergeAsync');
 
   // 轮询合并状态：SUCCEEDED 继续，FAILED 抛错，超时抛错
   let state = 'PENDING';
@@ -111,6 +153,7 @@ export async function runUpload(
     await sleep(pollIntervalMs);
     attempts++;
     state = (await api.mergeStatus(identifier)).state;
+    logger.info(`[上传] mergeStatus 第 ${attempts} 次查询 state=${state}`);
     if (state === 'SUCCEEDED') {
       break;
     }
@@ -119,10 +162,12 @@ export async function runUpload(
     }
   }
   if (state !== 'SUCCEEDED') {
+    logger.error(`[上传] 合并超时 state=${state} attempts=${attempts}`);
     throw new Error('合并超时，请稍后在列表中确认或重新上传');
   }
 
   onProgress?.(97);
   await api.confirm(fileId);
+  logger.info(`[上传] confirm 成功 fileId=${fileId}`);
   onProgress?.(100);
 }
