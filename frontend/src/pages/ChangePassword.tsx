@@ -15,7 +15,7 @@ export default function ChangePassword() {
     try {
       const oldPassword = await encryptPassword(values.oldPassword);
       const newPassword = await encryptPassword(values.newPassword);
-      await post<void>('/changePassword', { oldPassword, newPassword });
+      await post<void>('/api/changePassword', { oldPassword, newPassword });
       message.success('密码修改成功，请重新登录');
       clearToken();
       navigate('/login');

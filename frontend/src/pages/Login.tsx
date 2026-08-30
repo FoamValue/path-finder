@@ -13,7 +13,7 @@ export default function Login() {
 
   const refreshCaptcha = async () => {
     try {
-      const c = await get<Captcha>('/captcha');
+      const c = await get<Captcha>('/api/captcha');
       setCaptcha(c);
     } catch {
       /* ignore */
@@ -38,7 +38,7 @@ export default function Login() {
     setLoading(true);
     try {
       const encrypted = await encryptPassword(values.password);
-      const data = await post<{ token: string }>('/login', {
+      const data = await post<{ token: string }>('/api/login', {
         username: values.username,
         encryptedPassword: encrypted,
         captchaUuid: captcha?.uuid,

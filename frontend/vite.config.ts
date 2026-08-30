@@ -1,4 +1,4 @@
-import { defineConfig } from 'vite';
+import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
@@ -8,11 +8,11 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:8080', changeOrigin: true },
       '/upload': { target: 'http://localhost:8080', changeOrigin: true },
-      '/captcha': { target: 'http://localhost:8080', changeOrigin: true },
-      '/publicKey': { target: 'http://localhost:8080', changeOrigin: true },
-      '/login': { target: 'http://localhost:8080', changeOrigin: true },
-      '/logout': { target: 'http://localhost:8080', changeOrigin: true },
-      '/changePassword': { target: 'http://localhost:8080', changeOrigin: true },
     },
+  },
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    setupFiles: ['./src/test/setup.ts'],
   },
 });

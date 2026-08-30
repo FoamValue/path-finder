@@ -235,11 +235,11 @@ CREATE TABLE file_recycle_bin (
 
 | 方法 | 路径 | 说明 | 入参 | 返回 |
 |---|---|---|---|---|
-| GET | `/captcha` | 生成图片验证码 | — | `{ uuid, image(base64) }`；Redis `auth:captcha:{uuid}` TTL 5min |
-| GET | `/publicKey` | 下发 RSA 公钥 | — | `{ publicKey }` |
-| POST | `/login` | 登录 | `{ username, encryptedPassword, captchaUuid, captchaCode }` | `{ token }`；写入 Redis 会话 |
-| POST | `/logout` | 登出 | Header: Token | — |
-| POST | `/changePassword` | 修改密码（含首次强制改密） | `{ oldPassword, newPassword }` | — |
+| GET | `/api/captcha` | 生成图片验证码 | — | `{ uuid, image(base64) }`；Redis `auth:captcha:{uuid}` TTL 5min |
+| GET | `/api/publicKey` | 下发 RSA 公钥 | — | `{ publicKey }` |
+| POST | `/api/login` | 登录 | `{ username, encryptedPassword, captchaUuid, captchaCode }` | `{ token }`；写入 Redis 会话 |
+| POST | `/api/logout` | 登出 | Header: Token | — |
+| POST | `/api/changePassword` | 修改密码（含首次强制改密） | `{ oldPassword, newPassword }` | — |
 | GET | `/api/auth/me` | 当前用户信息 + 角色 | — | `{ user, role }` |
 
 **登录时序**（对应 PRD F1）：
@@ -317,7 +317,7 @@ CREATE TABLE file_recycle_bin (
 Request → Spring Security FilterChain
   ├─ CaptchaFilter       （/login 前置，校验 auth:captcha 一次性）
   ├─ UploadAuthFilter    （/upload：校验会话 Token + identifier 归属）
-  ├─ JwtSessionFilter    （会话校验，覆盖 /api/**、/logout、/changePassword）
+  ├─ JwtSessionFilter    （会话校验，覆盖 /api/**）
   └─ 授权判定            （@PreAuthorize 角色 + FileService 数据权限）
 ```
 
@@ -325,24 +325,24 @@ Request → Spring Security FilterChain
 
 | 端点 | 鉴权 |
 |---|---|
-| `/captcha`、`/publicKey`、`/login`、`/error`、静态资源 | 放行（匿名） |
+| `/api/captcha`、`/api/publicKey`、`/api/login`、`/error`、静态资源 | 放行（匿名） |
 | `/upload`（组件） | 需会话 + identifier 归属校验（UploadAuthFilter） |
-| `/api/**`、`/logout`、`/changePassword` | 需会话（JwtSessionFilter） |
-| `mustChangePassword=1` 的用户 | 仅放行 `/changePassword`、`/logout`、`/api/auth/me`，其余接口 403 |
+| `/api/**`（含 logout/changePassword） | 需会话（JwtSessionFilter） |
+| `mustChangePassword=1` 的用户 | 仅放行 `/api/changePassword`、`/api/logout`、`/api/auth/me`，其余接口 403 |
 
-> 说明：`/logout`、`/changePassword` 不在 `/api/**` 前缀下，鉴权矩阵显式纳入会话校验，避免认证空档；强制改密态的白名单保证首次登录只能改密。
+> 说明：认证端点统一收敛到 `/api/` 前缀（`/api/login`、`/api/captcha`、`/api/changePassword` 等），与前端 SPA 路由（`/login` 页面等）解耦，避免 vite/nginx 将页面请求误代理到后端；`/api/**` 全部纳入会话校验，避免认证空档。
 
 ### 5.2 关键安全点（对应 PRD F1）
 
 | 安全项 | 实现 |
 |---|---|
 | 图片验证码 | `CaptchaUtil` 生成（4 位干扰线 PNG），Redis key `auth:captcha:{uuid}`，TTL 5min，校验后 DEL（一次性） |
-| 密码传输加密 | 启动时 `RsaKeyHolder` 生成 2048 位密钥对（**优先从密钥文件加载，`security.rsa.private-key-path` 可配置，便于生产挂载持久化**）；公钥经 `/publicKey` 下发；**前端登录页每次渲染强制拉取最新公钥**（密钥对可能因重启更换），登录失败后再刷新；私钥解密登录密码 |
+| 密码传输加密 | 启动时 `RsaKeyHolder` 生成 2048 位密钥对（**优先从密钥文件加载，`security.rsa.private-key-path` 可配置，便于生产挂载持久化**）；公钥经 `/api/publicKey` 下发；**前端登录页每次渲染强制拉取最新公钥**（密钥对可能因重启更换），登录失败后再刷新；私钥解密登录密码 |
 | 密码存储 | BCrypt（cost=12） |
 | 失败锁定 | Redis `auth:fail:{username}` 计数，5 次触发 `auth:lock:{username}` TTL 10min，锁定期间拒绝登录 |
 | 多登录踢出 | 登录成功写入 `auth:user:session:{userId}=newToken`（覆盖），旧 token 的 `auth:session:{oldToken}` 删除，旧会话下次请求 401 |
 | 会话 | `auth:session:{token}` 存 userId，TTL 30min，滑动续期；**续期时同步刷新 `auth:user:session:{userId}` 的 TTL**，保持踢出映射一致；超时 401 自动登出 |
-| 首次强制改密 | `mustChangePassword=1` 时登录后仅允许 `/changePassword`、`/logout`、`/api/auth/me`，其余接口 403 |
+| 首次强制改密 | `mustChangePassword=1` 时登录后仅允许 `/api/changePassword`、`/api/logout`、`/api/auth/me`，其余接口 403 |
 
 ### 5.3 数据权限过滤（核心，对应 PRD 2.2）
 

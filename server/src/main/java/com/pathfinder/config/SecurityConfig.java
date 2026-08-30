@@ -49,7 +49,7 @@ public class SecurityConfig {
             .sessionManagement(sm -> sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
             .authorizeHttpRequests(auth -> auth
                 // 放行（匿名）
-                .requestMatchers("/captcha", "/publicKey", "/login", "/error").permitAll()
+                .requestMatchers("/api/captcha", "/api/publicKey", "/api/login", "/error").permitAll()
                 // 其余（/api/**、/logout、/changePassword、/upload、/download）均需认证
                 .anyRequest().authenticated())
             .exceptionHandling(ex -> ex

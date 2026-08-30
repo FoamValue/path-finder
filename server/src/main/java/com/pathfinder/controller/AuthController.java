@@ -49,19 +49,19 @@ public class AuthController {
         private String newPassword;
     }
 
-    @GetMapping("/captcha")
+    @GetMapping("/api/captcha")
     public ApiResponse<AuthService.CaptchaVo> captcha() {
         return ApiResponse.ok(authService.captcha());
     }
 
-    @GetMapping("/publicKey")
+    @GetMapping("/api/publicKey")
     public ApiResponse<Map<String, String>> publicKey() {
         Map<String, String> map = new HashMap<>();
         map.put("publicKey", rsaKeyHolder.publicKeyBase64());
         return ApiResponse.ok(map);
     }
 
-    @PostMapping("/login")
+    @PostMapping("/api/login")
     public ApiResponse<Map<String, String>> login(@RequestBody LoginForm form, HttpServletRequest request) {
         String token = authService.login(form.getUsername(), form.getEncryptedPassword(),
                 form.getCaptchaUuid(), form.getCaptchaCode(), clientIp(request), request.getHeader("User-Agent"));
@@ -70,14 +70,14 @@ public class AuthController {
         return ApiResponse.ok(map);
     }
 
-    @PostMapping("/logout")
+    @PostMapping("/api/logout")
     public ApiResponse<Void> logout(HttpServletRequest request) {
         String token = resolveToken(request);
         authService.logout(token);
         return ApiResponse.ok();
     }
 
-    @PostMapping("/changePassword")
+    @PostMapping("/api/changePassword")
     public ApiResponse<Void> changePassword(@RequestBody ChangePwdForm form, HttpServletRequest request) {
         authService.changePassword(form.getOldPassword(), form.getNewPassword(),
                 SecurityUtil.current(), clientIp(request), request.getHeader("User-Agent"));

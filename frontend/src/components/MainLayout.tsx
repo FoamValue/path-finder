@@ -43,7 +43,7 @@ export default function MainLayout() {
 
   const logout = async () => {
     try {
-      await post('/logout');
+      await post('/api/logout');
     } catch {
       /* ignore */
     }
