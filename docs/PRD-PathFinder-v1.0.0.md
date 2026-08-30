@@ -184,8 +184,8 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 编号 | F4 |
 |---|---|
 | 功能名称 | 文件下载 |
-| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.3` 的 Range 断点下载：`GET /download?identifier=xxx` 完整下载返回 `200`；携带 `Range` 头返回 `206 Partial Content`（区间不可满足返回 `416`），实现断点续传下载 |
-| 业务规则 | 1. 仅可下载有权限的文件（本系统鉴权通过后透传至下载接口，identifier 不暴露真实磁盘路径）；2. 批量下载由本系统先 ZIP 打包为临时文件，再经下载接口返回；3. ZIP 打包数量上限 100 个文件/单次 |
+| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.3` 完成分片上传与合并；**下载由 PathFinder 下载端点（`GET /api/file/download/{token}`，本地流式）提供**，实现与组件一致的 Range 断点续传语义：完整下载返回 `200`，携带 `Range` 头返回 `206 Partial Content`（区间不可满足返回 `416`）。组件 `GET /download?identifier=xxx` 端点保留用于未入库临时文件/联调兜底，不承载业务下载 |
+| 业务规则 | 1. 仅可下载有权限的文件（下载令牌由后端签发，`identifier` 与真实磁盘路径不对外暴露）；2. 批量下载由本系统先 ZIP 打包为临时文件，再经下载端点返回；3. ZIP 打包数量上限 100 个文件/单次 |
 | 验收标准 | 无权限文件下载被拒绝（403）；下载文件名正确；ZIP 可正常解压；Range 断点续传后文件内容完整（MD5 一致） |
 
 ### 4.5 文件管理与检索（F5）
@@ -222,7 +222,7 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | HTTP API 契约 | 上传分片 `POST /upload`（multipart 字段 `file`，参数 `identifier`/`fileName`/`fileSize`/`chunkSize`/`chunkTotal`/`chunkIndex`/`chunkMd5`）→ 返回进度 JSON；进度 `GET /upload?action=progress&identifier=xxx`；同步合并 `POST /upload?action=merge&identifier=xxx`；异步合并 `POST /upload?action=mergeAsync&identifier=xxx`（`202`）+ `GET /upload?action=mergeStatus&identifier=xxx`（`NONE/PENDING/RUNNING/SUCCEEDED/FAILED`）；下载 `GET /download?identifier=xxx`（支持 `Range`，`200/206/416`） |
 | 关键配置 | `storage-dir`（分片/合并根目录）、`metadata-store=redis` + `redis.*`（host/port/password/key-prefix/ttl-seconds）、`verify-checksum=true`、`max-chunk-size`、`max-file-size`、`quota.max-bytes`（全局配额）、`async-merge.enabled=true`、`cleanup.*`（过期任务/孤儿清理，可配 `use-redis-lock`）、`security.*`（可选共享令牌，本系统 v1.0 不启用，鉴权由 PathFinder 认证层完成） |
 | 错误码映射 | `400` 参数非法 / 超 `max-file-size`；`401` 访问令牌缺失；`404` 文件不存在；`416` Range 不可满足；`507 Insufficient Storage` 超全局配额 |
-| 集成约束 | 1. PathFinder 认证与数据权限校验位于该组件接口之前，校验通过后生成内部 `identifier`（UUID），不对外暴露真实存储路径；2. 前端上传协议（multipart 字段名与全部请求参数）必须与组件契约一致；3. 组件元数据不落入 PathFinder 业务库，上传任务状态由组件管理（Redis/File TaskStore） |
+| 集成约束 | 1. PathFinder 认证与数据权限校验位于该组件接口之前，校验通过后生成内部 `identifier`（UUID），不对外暴露真实存储路径；2. 前端上传协议（multipart 字段名与全部请求参数）必须与组件契约一致；3. 组件元数据不落入 PathFinder 业务库，上传任务状态由组件管理（Redis/File TaskStore）；4. 业务下载由 PathFinder 下载端点承载（见 F4），组件 `/download` 仅用于未入库临时文件/联调兜底 |
 | 验收标准 | 集成后分片上传/断点续传/秒传/Range 下载端到端可用；配置项与组件 README 契约一致；错误码能被前端识别并友好提示 |
 
 ### 4.9 文件归属变更（F9）
@@ -249,7 +249,7 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 后端 | JDK 26 + Spring Boot 4.1.1 + Spring Security + Spring Data JPA + MySQL 8（生产）/ H2（开发） |
 | 缓存 | Redis 9：会话/Token 存储、文件元信息缓存、部门树与用户信息缓存、登录失败计数（锁定） |
 | 鉴权 | Spring Security + Redis 会话管理（单会话，多登录踢出）；图片验证码（Redis 一次性校验）；前端 RSA 公钥加密密码传输、后端 BCrypt 校验；登录失败计数落 Redis（连续 5 次锁定 10 分钟）；自定义登录成功/失败处理器 |
-| 大文件传输 | 集成 `cn.chenxinjie:upload-file:1.0.0-rc.3`（`upload-file-spring-boot-starter` + `upload-file-store-redis`）实现分片上传 / 断点续传 / MD5 校验 / 异步合并 / Range 断点下载 / 过期任务清理，接口契约见 F8 |
+| 大文件传输 | 集成 `cn.chenxinjie:upload-file:1.0.0-rc.3`（`upload-file-spring-boot-starter` + `upload-file-store-redis`）实现分片上传 / 断点续传 / MD5 校验 / 异步合并 / 过期任务清理；Range 断点下载由 PathFinder 下载端点实现（语义与组件一致），接口契约见 F8/F4 |
 | 数据权限 | 文件表含 `space_type`（PERSONAL/DEPT/PUBLIC）+ `dept_id` + `owner_id`（归属人）+ `creator_id`，查询时按可见性规则动态过滤；归属变更仅更新元数据不移动物理文件（见 F9） |
 | 列表分页 | **真分页**：后端 Spring Data JPA `Pageable` + 数据库 `LIMIT/OFFSET` 分页（不依赖前端内存分页），返回当前页数据与 `total`；`pageNum/pageSize` 参数化并限制 `pageSize` 上限（默认 20，最大 100） |
 | 文件存储 | 本地磁盘持久化（`upload-file.storage-dir` 落分片与合并文件 + `storage.root` 归档业务文件），UUID 文件名 + 日期分目录 + 软删除归档 |

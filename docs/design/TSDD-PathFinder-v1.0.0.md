@@ -37,7 +37,7 @@
                 │ HTTPS / REST              │ multipart + Range
 ┌───────────────▼───────────────────────────▼────────────────────┐
 │                      nginx:alpine（静态资源 + 反向代理）          │
-│      /api/* → 后端   /upload /download → 后端（鉴权后透传）       │
+│      /api/* → 后端   /upload → 后端（鉴权后透传）                 │
 └───────────────┬───────────────────────────┬────────────────────┘
                 │                            │
 ┌───────────────▼───────────────────────────▼────────────────────┐
@@ -60,7 +60,7 @@
 
 | 层 | 职责 | 关键类 |
 |---|---|---|
-| `config` | 配置类：Security、Redis、Web、上传组件、全局异常 | `SecurityConfig`、`RedisConfig`、`GlobalExceptionHandler` |
+| `config` | 配置类：Security、Redis、Web、上传组件、全局异常、调度任务 | `SecurityConfig`、`RedisConfig`、`GlobalExceptionHandler`、`StorageCleanupScheduler`、`LogArchiveScheduler` |
 | `controller` | HTTP 入参校验与路由 | `AuthController`、`UserController`、`DeptController`、`FileController`、`LogController`、`StorageController` |
 | `service` | 业务逻辑、事务边界、数据权限判定 | `AuthService`、`UserService`、`DeptService`、`FileService`、`LogService` |
 | `repository` | JPA 数据访问、真分页查询 | `UserRepository`、`DeptRepository`、`FileRepository`、`OperationLogRepository` |
@@ -217,6 +217,14 @@ CREATE TABLE file_recycle_bin (
 
 **`ts` 字段约定（所有表强制）**：每张表必须包含 `ts TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP`，由 **MySQL 自动维护**——插入时默认当前时间，行被更新时自动刷新。应用层以只读方式映射（`@Column(name = "ts", insertable = false, updatable = false)`），不参与任何写入/回填，保证其值只由数据库控制。
 
+### 3.4 初始数据（Seed，对应 G1）
+
+随 Flyway 迁移初始化（`V2__seed.sql`，随 PLAN PF-003 落地）：
+
+1. **角色**：`sys_role` 写入四角色——`ADMIN` / `DEPT_ADMIN` / `USER` / `VIEWER`（`role_code` 唯一）。
+2. **根部门**：初始化根部门"组织"（`sys_dept` 根节点，`parent_id=0`）。
+3. **首个系统管理员**：`username=admin`，归属根部门，角色 `ADMIN`，初始密码 `Init@123`（BCrypt 预生成哈希），`must_change_password=1`——首次登录强制改密后方可使用，解决"首个管理员由谁创建"的引导问题。
+
 ---
 
 ## 4. 接口设计
@@ -290,40 +298,51 @@ CREATE TABLE file_recycle_bin (
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/upload` | 上传分片（见 PRD F8 契约） |
+| POST | `/upload` | 上传分片（见 PRD F8 契约，业务上传唯一入口） |
 | GET | `/upload?action=progress` | 查询进度 |
 | POST | `/upload?action=merge` | 合并 |
 | POST | `/upload?action=mergeAsync` | 异步合并（202） |
 | GET | `/upload?action=mergeStatus` | 异步合并状态 |
-| GET | `/download?identifier=xxx` | 下载（支持 Range） |
+| GET | `/download?identifier=xxx` | 组件下载端点：**仅用于未入库临时文件/联调兜底，v1.0 不承载业务下载**（业务下载见 4.4 `/api/file/download/{token}`） |
 
-> 鉴权策略：Spring Security 放行登录相关端点，`/upload`、`/download` 必须携带 PathFinder 会话 Token，由自定义 `UploadAuthFilter` 校验后放行至组件 Servlet；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。
+> 鉴权策略：Spring Security 放行登录相关端点，`/upload` 必须携带 PathFinder 会话 Token，由自定义 `UploadAuthFilter` 校验后放行至组件 Servlet；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。
 
 ---
 
 ## 5. 安全设计
 
-### 5.1 认证链
+### 5.1 认证链与端点鉴权矩阵
 
 ```
 Request → Spring Security FilterChain
   ├─ CaptchaFilter       （/login 前置，校验 auth:captcha 一次性）
-  ├─ UploadAuthFilter    （/upload /download：校验会话 Token + identifier 归属）
-  ├─ JwtSessionFilter    （其余 /api/**：校验 auth:session:{token}）
+  ├─ UploadAuthFilter    （/upload：校验会话 Token + identifier 归属）
+  ├─ JwtSessionFilter    （会话校验，覆盖 /api/**、/logout、/changePassword）
   └─ 授权判定            （@PreAuthorize 角色 + FileService 数据权限）
 ```
+
+**端点鉴权矩阵（SecurityConfig 生效）**：
+
+| 端点 | 鉴权 |
+|---|---|
+| `/captcha`、`/publicKey`、`/login`、`/error`、静态资源 | 放行（匿名） |
+| `/upload`（组件） | 需会话 + identifier 归属校验（UploadAuthFilter） |
+| `/api/**`、`/logout`、`/changePassword` | 需会话（JwtSessionFilter） |
+| `mustChangePassword=1` 的用户 | 仅放行 `/changePassword`、`/logout`、`/api/auth/me`，其余接口 403 |
+
+> 说明：`/logout`、`/changePassword` 不在 `/api/**` 前缀下，鉴权矩阵显式纳入会话校验，避免认证空档；强制改密态的白名单保证首次登录只能改密。
 
 ### 5.2 关键安全点（对应 PRD F1）
 
 | 安全项 | 实现 |
 |---|---|
 | 图片验证码 | `CaptchaUtil` 生成（4 位干扰线 PNG），Redis key `auth:captcha:{uuid}`，TTL 5min，校验后 DEL（一次性） |
-| 密码传输加密 | 启动时 `RsaKeyHolder` 生成 2048 位密钥对；公钥经 `/publicKey` 下发；私钥解密登录密码；每次登录失败后前端刷新验证码并可选刷新公钥 |
+| 密码传输加密 | 启动时 `RsaKeyHolder` 生成 2048 位密钥对（**优先从密钥文件加载，`security.rsa.private-key-path` 可配置，便于生产挂载持久化**）；公钥经 `/publicKey` 下发；**前端登录页每次渲染强制拉取最新公钥**（密钥对可能因重启更换），登录失败后再刷新；私钥解密登录密码 |
 | 密码存储 | BCrypt（cost=12） |
 | 失败锁定 | Redis `auth:fail:{username}` 计数，5 次触发 `auth:lock:{username}` TTL 10min，锁定期间拒绝登录 |
 | 多登录踢出 | 登录成功写入 `auth:user:session:{userId}=newToken`（覆盖），旧 token 的 `auth:session:{oldToken}` 删除，旧会话下次请求 401 |
-| 会话 | `auth:session:{token}` 存 userId，TTL 30min，滑动续期；超时 401 自动登出 |
-| 首次强制改密 | `mustChangePassword=1` 时登录后仅允许 `/changePassword`，其余接口 403 |
+| 会话 | `auth:session:{token}` 存 userId，TTL 30min，滑动续期；**续期时同步刷新 `auth:user:session:{userId}` 的 TTL**，保持踢出映射一致；超时 401 自动登出 |
+| 首次强制改密 | `mustChangePassword=1` 时登录后仅允许 `/changePassword`、`/logout`、`/api/auth/me`，其余接口 403 |
 
 ### 5.3 数据权限过滤（核心，对应 PRD 2.2）
 
@@ -343,6 +362,10 @@ Request → Spring Security FilterChain
 操作级权限：
 - 重命名/软删除：仅 `owner_id=当前用户` 或 `ADMIN` 或 `DEPT_ADMIN`（文件属本部门管辖）。
 - 归属变更：所有者 / 本部门及下级部门 DEPT_ADMIN / ADMIN。
+
+**账号生命周期与文件处置规则（G12）**：
+- 停用用户：个人空间文件冻结（原 owner 不可见），ADMIN / 所属部门 DEPT_ADMIN 可查看，可通过归属变更移交；账号重新启用后恢复可见。
+- 删除用户：系统强制校验其个人空间文件已移交完毕（或由 ADMIN 一键移交至所属部门空间，`owner_id` 置为所属部门 DEPT_ADMIN），否则禁止删除。此规则在 `UserService.delete` 内强制实现并记录审计。
 
 ---
 
@@ -407,6 +430,8 @@ upload-file:
   │  POST /api/file/{id}/confirm
   │ ────────────────────────▶ 移动合并产物→统一存储；回填 MD5/路径；status=READY；记录审计
 ```
+
+**confirm 阶段合并产物定位（G3，冻结方案）**：`/confirm` 在后端注入组件核心服务 `ResumableUploadService`，按 `file_info.upload_identifier` 调用 `getProgress(identifier)` 获取任务元数据，从中解析合并产物绝对路径（组件 `UploadResult`/任务元数据含最终文件路径）；产物位于 `upload-file.storage-dir` 任务目录下，与 PathFinder 统一存储同盘，故 `Files.move` 为同盘原子移动。若元数据不可达（如 Redis 清理），返回明确错误并要求客户端重新触发 `mergeAsync` 后重试 confirm。
 
 ### 6.4 下载流程（对应 F4）
 
@@ -477,9 +502,11 @@ upload-file:
 
 - 入库：`confirm` 时由 `PathUtil` 生成 `files/{YYYY-MM-DD}/{uuid}.{ext}`，`Files.move`（同盘原子移动）。
 - 软删除：文件记录 `del_flag=1`、`del_at`，物理文件 `move` 到 `del/`，回收站记录 `expire_at=+30d`。
+- 恢复（G7）：`restore` 时校验原 `storage_path` 目录仍存在、且文件归属的部门/空间仍有效，将物理文件从 `del/` 迁回 `files/{原日期目录}/{原 uuid}.{ext}`，清除 `del_flag`/`del_at`，删除回收站记录。
 - 到期清理：`StorageCleanupScheduler`（每日 2:00）扫描回收站过期记录 → 删除物理文件 + 清库。
+- **UPLOADING 孤儿清理（G2）**：同调度器扫描 `status=UPLOADING` 且 `created_at` 超过 24h 的 `file_info`，直接删除记录并记录审计；物理分片由组件 `cleanup.task-ttl=24h` 兜底清理。
 - 启动初始化：`ApplicationReadyEvent` 校验/创建 `files|upload|del|tmp` 目录。
-- 用量监控：`StorageController` 用 `Files.getFileStore` 统计；使用率 ≥85% 输出告警日志。
+- 用量监控与告警（G9）：`StorageController` 用 `Files.getFileStore` 统计；使用率 ≥85% 时输出结构化告警日志，并以 `STORAGE_ALERT` 类型写入 `operation_log`（人工可查），预留通知扩展点（v1.1 接 Webhook/邮件）。
 
 ---
 
@@ -501,18 +528,20 @@ upload-file:
 
 `AuditAspect`（`@Aspect`）拦截关键方法或 Service 显式调用 `LogService.record(...)`：记录操作人/IP/UA/类型/目标/结果；登录与登出在认证成功/失败处理器内记录。结构化 `detail` 采用 JSON 保存变更前后值（归属变更的旧/新归属）。
 
+**日志归档策略（G10）**：`operation_log` 保留周期 12 个月；`LogArchiveScheduler`（每日 3:00）将超期记录导出归档 CSV 至 `storage.root/archive/` 后批量删除，归档产物纳入备份范围（见 10 部署设计）。
+
 ---
 
 ## 10. 部署设计
 
 | 组件 | 镜像 | 说明 |
 |---|---|---|
-| 前端 | `nginx:alpine` | 托管构建产物 + `/api` `/upload` `/download` 反向代理 |
-| 后端 | 自建 `eclipse-temurin:26-jre-alpine` | Spring Boot fat-jar |
-| Redis | `redis:9-alpine` | 开启 AOF 持久化 |
-| MySQL | `mysql:8` | 数据卷持久化 |
+| 前端 | `nginx:alpine` | 托管构建产物 + `/api` `/upload` 反向代理；**TLS 终结：监听 443（挂载证书卷）+ 80 强制重定向 HTTPS** |
+| 后端 | 自建 `eclipse-temurin:26-jre-alpine` | Spring Boot fat-jar；挂载 RSA 密钥文件卷（`security.rsa.private-key-path`） |
+| Redis | `redis:9-alpine` | 开启 AOF 持久化；**配置 `requirepass`（仅容器网络内可达）** |
+| MySQL | `mysql:8` | 数据卷持久化；**禁用 root 远程登录，为应用创建独立账号并仅授予业务库最小权限** |
 
-`docker-compose.yml`：`server`（挂载 `./data/storage:/data/storage` 卷 + 依赖 redis/mysql）、`redis`、`mysql`、`nginx`。健康检查轮询 `/api/auth/me`。
+`docker-compose.yml` 服务：`server`（挂载 `./data/storage:/data/storage` 存储卷 + RSA 密钥卷，`depends_on` redis/mysql）、`redis`、`mysql`、`nginx`（挂载证书卷 + 静态产物卷）。证书通过 volume 挂载（`certs:/etc/nginx/certs`，含 `fullchain.pem`/`privkey.pem`）。健康检查：nginx 与后端分别轮询 `/api/auth/me`（401=服务存活判定）。RSA 密钥对文件由首次启动生成并持久化至密钥卷，重启沿用，保证旧公钥密文可解密。
 
 ---
 
