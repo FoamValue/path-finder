@@ -1,0 +1,22 @@
+spring:
+  datasource:
+    url: jdbc:h2:mem:test;MODE=MySQL;DB_CLOSE_DELAY=-1
+    driver-class-name: org.h2.Driver
+    username: sa
+    password:
+  jpa:
+    hibernate:
+      ddl-auto: create-drop
+    open-in-view: false
+
+pathfinder:
+  storage:
+    root: ./target/test-storage
+
+upload-file:
+  storage-dir: ./target/test-storage/upload
+  metadata-store: memory
+  verify-checksum: false
+  async-merge:
+    enabled: true
+    thread-pool-size: 2

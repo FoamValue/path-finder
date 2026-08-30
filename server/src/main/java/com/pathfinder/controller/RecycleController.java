@@ -30,7 +30,7 @@ public class RecycleController {
     public ApiResponse<PageResult<FileRecycleBin>> page(
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return ApiResponse.ok(fileService.recyclePage(pageNum, pageSize));
+        return ApiResponse.ok(fileService.recyclePage(SecurityUtil.current(), pageNum, pageSize));
     }
 
     @PostMapping("/{fileId}/restore")

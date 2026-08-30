@@ -322,9 +322,6 @@ public class FileService {
     public void ownerChange(Long id, OwnerChangeForm form, AuthUser user) {
         FileInfo f = getFile(id);
         assertCanOperate(f, user);
-        if ("READY".equals(f.getStatus()) == false && !"UPLOADING".equals(f.getStatus())) {
-            // 无状态约束，仅校验
-        }
         if (f.getStatus().equals("UPLOADING")) {
             throw BizException.badRequest("文件上传/合并中，请稍后再试");
         }
@@ -384,10 +381,20 @@ public class FileService {
 
     /* ============ 回收站 ============ */
 
-    public PageResult<FileRecycleBin> recyclePage(int pageNum, int pageSize) {
-        Page<FileRecycleBin> page = recycleBinRepository.findAll(
-                PageRequest.of(pageNum - 1, Math.min(pageSize, 100), Sort.by(Sort.Direction.DESC, "deletedAt")));
-        return PageResult.of(page, pageNum, pageSize);
+    /**
+     * 回收站分页（数据权限）：仅返回当前用户可见范围内的文件回收记录。
+     */
+    public PageResult<FileRecycleBin> recyclePage(AuthUser user, int pageNum, int pageSize) {
+        List<FileRecycleBin> all = recycleBinRepository.findAll(
+                Sort.by(Sort.Direction.DESC, "deletedAt"));
+        List<FileRecycleBin> visible = all.stream()
+                .filter(rb -> fileInfoRepository.findById(rb.getFileId())
+                        .map(f -> canView(f, user))
+                        .orElse(false))
+                .toList();
+        int from = Math.min((pageNum - 1) * pageSize, visible.size());
+        int to = Math.min(from + pageSize, visible.size());
+        return PageResult.of(visible.subList(from, to), visible.size(), pageNum, pageSize);
     }
 
     @Transactional

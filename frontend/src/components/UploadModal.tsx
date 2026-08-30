@@ -1,15 +1,14 @@
-import { useCallback, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { Modal, Upload, Select, Space, Progress, message, Button } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
-import { get, post } from '../api/client';
-import { chunkMd5, formatSize } from '../utils/file';
-import type { DeptNode, UploadTicket } from '../api/types';
-
-const CHUNK_SIZE = 5 * 1024 * 1024;
+import { formatSize } from '../utils/file';
+import { runUpload } from '../utils/uploadTask';
+import type { DeptNode } from '../api/types';
 
 interface UploadItem {
-  file: File;
+  uid: string;
+  name: string;
   progress: number;
   status: 'pending' | 'uploading' | 'merging' | 'done' | 'error';
   error?: string;
@@ -39,14 +38,14 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
   const [uploading, setUploading] = useState(false);
   const abortRef = useRef(false);
 
-  const reset = useCallback(() => {
+  const reset = () => {
     setFileList([]);
     setItems([]);
     setSpaceType('PERSONAL');
     setDeptId(undefined);
     setUploading(false);
     abortRef.current = false;
-  }, []);
+  };
 
   const close = () => {
     if (uploading) return;
@@ -54,67 +53,8 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
     onClose();
   };
 
-  const updateItem = (name: string, patch: Partial<UploadItem>) => {
-    setItems((prev) => prev.map((it) => (it.file.name === name ? { ...it, ...patch } : it)));
-  };
-
-  const uploadOne = async (file: File) => {
-    const ticket = await post<UploadTicket>('/api/file/uploadTicket', {
-      fileName: file.name,
-      fileSize: file.size,
-      spaceType,
-      deptId: spaceType === 'DEPT' ? deptId : null,
-    });
-    const { identifier, fileId } = ticket;
-    const chunkTotal = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));
-
-    // 断点续传：查询已上传分片
-    const progress = await get<{ uploadedChunks?: number[] }>(
-      `/upload?action=progress&identifier=${identifier}`,
-    );
-    const uploaded = new Set(progress.uploadedChunks || []);
-
-    for (let i = 0; i < chunkTotal; i++) {
-      if (abortRef.current) throw new Error('已取消');
-      if (uploaded.has(i)) continue;
-      const start = i * CHUNK_SIZE;
-      const blob = file.slice(start, Math.min(start + CHUNK_SIZE, file.size));
-      const md5 = await chunkMd5(blob);
-      const form = new FormData();
-      form.append('file', blob, `chunk-${i}`);
-      form.append('identifier', identifier);
-      form.append('fileName', file.name);
-      form.append('fileSize', String(file.size));
-      form.append('chunkSize', String(CHUNK_SIZE));
-      form.append('chunkTotal', String(chunkTotal));
-      form.append('chunkIndex', String(i));
-      form.append('chunkMd5', md5);
-      const resp = await fetch('/upload', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
-        body: form,
-      });
-      if (!resp.ok) {
-        const t = await resp.text();
-        throw new Error(`分片 ${i} 上传失败：${t}`);
-      }
-      updateItem(file.name, { progress: Math.round(((i + 1) / chunkTotal) * 90) });
-    }
-
-    updateItem(file.name, { progress: 92, status: 'merging' });
-    await post(`/upload?action=mergeAsync&identifier=${identifier}`);
-    for (let retry = 0; retry < 60; retry++) {
-      if (abortRef.current) throw new Error('已取消');
-      await new Promise((r) => setTimeout(r, 1000));
-      const st = await get<{ state: string }>(
-        `/upload?action=mergeStatus&identifier=${identifier}`,
-      );
-      if (st.state === 'SUCCEEDED') break;
-      if (st.state === 'FAILED') throw new Error('合并失败');
-    }
-    updateItem(file.name, { progress: 97 });
-    await post(`/api/file/${fileId}/confirm`);
-    updateItem(file.name, { progress: 100, status: 'done' });
+  const updateItem = (uid: string, patch: Partial<UploadItem>) => {
+    setItems((prev) => prev.map((it) => (it.uid === uid ? { ...it, ...patch } : it)));
   };
 
   const startUpload = async () => {
@@ -124,23 +64,45 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
       return;
     }
     setUploading(true);
-    setItems(fileList.map((f) => ({ file: f.originFileObj as File, progress: 0, status: 'uploading' })));
+    setItems(
+      fileList.map((f) => ({
+        uid: f.uid,
+        name: f.name,
+        progress: 0,
+        status: 'uploading' as const,
+      })),
+    );
     abortRef.current = false;
+
+    // 用局部变量跟踪失败，避免读取过期 state
+    let errorCount = 0;
     for (const f of fileList) {
       const file = f.originFileObj as File;
       try {
-        await uploadOne(file);
+        await runUpload(file, spaceType, deptId, {
+          onProgress: (p) => updateItem(f.uid, { progress: p }),
+        });
+        updateItem(f.uid, { progress: 100, status: 'done' });
       } catch (e: any) {
-        updateItem(file.name, { status: 'error', error: e.message || '上传失败' });
+        errorCount++;
+        updateItem(f.uid, { status: 'error', error: e.message || '上传失败' });
       }
     }
-    const failed = items.some((it) => it.status === 'error');
     setUploading(false);
-    if (!failed) {
+    if (errorCount === 0) {
       message.success('上传完成');
       onSuccess();
       reset();
+    } else if (errorCount === fileList.length) {
+      message.error('上传失败，请检查后重试');
+    } else {
+      message.warning(`${fileList.length - errorCount} 个成功，${errorCount} 个失败`);
     }
+  };
+
+  const stopUpload = () => {
+    abortRef.current = true;
+    setUploading(false);
   };
 
   const doneCount = items.filter((it) => it.status === 'done').length;
@@ -155,13 +117,15 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
           <Button onClick={close} disabled={uploading}>
             取消
           </Button>
-          <Button
-            type="primary"
-            loading={uploading}
-            onClick={uploading ? () => (abortRef.current = true) : startUpload}
-          >
-            {uploading ? '停止' : '开始上传'}
-          </Button>
+          {uploading ? (
+            <Button danger onClick={stopUpload}>
+              停止
+            </Button>
+          ) : (
+            <Button type="primary" onClick={startUpload}>
+              开始上传
+            </Button>
+          )}
         </Space>
       }
     >
@@ -203,12 +167,24 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
           )}
         </Space>
         {items.map((it) => (
-          <div key={it.file.name}>
+          <div key={it.uid}>
             <Space style={{ justifyContent: 'space-between', width: '100%' }}>
-              <span style={{ fontSize: 12, maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                {it.file.name}
+              <span
+                style={{
+                  fontSize: 12,
+                  maxWidth: 220,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {it.name}
               </span>
-              <span style={{ fontSize: 12, color: '#999' }}>{formatSize(it.file.size)}</span>
+              <span style={{ fontSize: 12, color: '#999' }}>
+                {fileList.find((f) => f.uid === it.uid)?.size != null
+                  ? formatSize(fileList.find((f) => f.uid === it.uid)!.size!)
+                  : ''}
+              </span>
             </Space>
             <Progress
               percent={it.progress}
