@@ -384,17 +384,45 @@ public class FileService {
     /**
      * 回收站分页（数据权限）：仅返回当前用户可见范围内的文件回收记录。
      */
-    public PageResult<FileRecycleBin> recyclePage(AuthUser user, int pageNum, int pageSize) {
+    public PageResult<RecycleVo> recyclePage(AuthUser user, int pageNum, int pageSize) {
         List<FileRecycleBin> all = recycleBinRepository.findAll(
                 Sort.by(Sort.Direction.DESC, "deletedAt"));
-        List<FileRecycleBin> visible = all.stream()
+        List<RecycleVo> visible = all.stream()
                 .filter(rb -> fileInfoRepository.findById(rb.getFileId())
                         .map(f -> canView(f, user))
                         .orElse(false))
+                .map(rb -> {
+                    RecycleVo vo = new RecycleVo();
+                    vo.setId(rb.getId());
+                    vo.setFileId(rb.getFileId());
+                    vo.setDeletedBy(rb.getDeletedBy());
+                    vo.setDeletedAt(rb.getDeletedAt());
+                    vo.setExpireAt(rb.getExpireAt());
+                    fileInfoRepository.findById(rb.getFileId()).ifPresent(f -> {
+                        vo.setOriginalName(f.getOriginalName());
+                        vo.setFileType(f.getFileType());
+                        vo.setFileSize(f.getFileSize());
+                        vo.setSpaceType(f.getSpaceType());
+                    });
+                    return vo;
+                })
                 .toList();
         int from = Math.min((pageNum - 1) * pageSize, visible.size());
         int to = Math.min(from + pageSize, visible.size());
         return PageResult.of(visible.subList(from, to), visible.size(), pageNum, pageSize);
+    }
+
+    @Data
+    public static class RecycleVo {
+        private Long id;
+        private Long fileId;
+        private Long deletedBy;
+        private LocalDateTime deletedAt;
+        private LocalDateTime expireAt;
+        private String originalName;
+        private String fileType;
+        private Long fileSize;
+        private String spaceType;
     }
 
     @Transactional

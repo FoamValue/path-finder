@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Button, Space, Table, Popconfirm, message } from 'antd';
+import { Button, Space, Table, Popconfirm, Tag, message } from 'antd';
 import { del, get, post } from '../api/client';
+import { formatSize } from '../utils/file';
 import type { RecycleItem } from '../api/types';
 
 export default function Recycle() {
@@ -34,9 +35,11 @@ export default function Recycle() {
   };
 
   const columns = [
-    { title: '文件 ID', dataIndex: 'fileId', width: 100 },
-    { title: '删除时间', dataIndex: 'deletedAt', width: 180, render: (v: string) => v?.replace('T', ' ').slice(0, 19) },
-    { title: '到期时间', dataIndex: 'expireAt', width: 180, render: (v: string) => v?.replace('T', ' ').slice(0, 19) },
+    { title: '文件名', dataIndex: 'originalName', ellipsis: true, width: 280, render: (v: string) => v || '-' },
+    { title: '类型', dataIndex: 'fileType', width: 100, render: (t: string) => (t ? <Tag>{t}</Tag> : '-') },
+    { title: '大小', dataIndex: 'fileSize', width: 100, render: (v: number) => formatSize(v || 0) },
+    { title: '删除时间', dataIndex: 'deletedAt', width: 170, render: (v: string) => v?.replace('T', ' ').slice(0, 19) },
+    { title: '到期时间', dataIndex: 'expireAt', width: 170, render: (v: string) => v?.replace('T', ' ').slice(0, 19) },
     {
       title: '操作',
       width: 200,

@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Modal, Upload, Select, Space, Progress, message, Button } from 'antd';
+import { Modal, Upload, Select, Space, Progress, message, Button, Typography } from 'antd';
 import { InboxOutlined } from '@ant-design/icons';
 import type { UploadFile } from 'antd';
 import { formatSize } from '../utils/file';
@@ -30,14 +30,24 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
   const [items, setItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const abortRef = useRef(false);
+  const queueRef = useRef<UploadFile[]>([]);
+  const processingRef = useRef(false);
+  const handledUidsRef = useRef(new Set<string>());
 
-  const reset = () => {
+  const resetFiles = () => {
     setFileList([]);
     setItems([]);
-    setSpaceType('PERSONAL');
-    setDeptId(undefined);
     setUploading(false);
     abortRef.current = false;
+    queueRef.current = [];
+    processingRef.current = false;
+    handledUidsRef.current.clear();
+  };
+
+  const reset = () => {
+    resetFiles();
+    setSpaceType('PERSONAL');
+    setDeptId(undefined);
   };
 
   const close = () => {
@@ -50,28 +60,14 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
     setItems((prev) => prev.map((it) => (it.uid === uid ? { ...it, ...patch } : it)));
   };
 
-  const startUpload = async () => {
-    if (!fileList.length) return;
-    if (spaceType === 'DEPT' && !deptId) {
-      message.warning('部门空间必须选择部门');
-      return;
-    }
-    setUploading(true);
-    setItems(
-      fileList.map((f) => ({
-        uid: f.uid,
-        name: f.name,
-        progress: 0,
-        status: 'uploading' as const,
-      })),
-    );
-    abortRef.current = false;
-
-    // 用局部变量跟踪失败，避免读取过期 state
+  const processQueue = async () => {
     let errorCount = 0;
-    for (const f of fileList) {
+    let total = 0;
+    while (queueRef.current.length && !abortRef.current) {
+      const f = queueRef.current.shift()!;
+      total++;
       const file = f.originFileObj as File;
-      logger.info(`[UploadModal] 开始上传 uid=${f.uid} name=${file.name} size=${file.size}`);
+      logger.info(`[UploadModal] 自动上传 uid=${f.uid} name=${file.name} size=${file.size}`);
       try {
         await runUpload(file, spaceType, deptId, {
           onProgress: (p) => updateItem(f.uid, { progress: p }),
@@ -84,24 +80,56 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
         updateItem(f.uid, { status: 'error', error: e.message || '上传失败' });
       }
     }
+    const aborted = abortRef.current;
+    abortRef.current = false;
+    processingRef.current = false;
     setUploading(false);
+    if (aborted) {
+      queueRef.current.forEach((f) => updateItem(f.uid, { status: 'pending', progress: 0 }));
+      queueRef.current = [];
+      message.warning('已停止上传');
+      return;
+    }
+    if (total === 0) return;
     if (errorCount === 0) {
       message.success('上传完成');
       onSuccess();
-      reset();
-    } else if (errorCount === fileList.length) {
+      resetFiles();
+    } else if (errorCount === total) {
       message.error('上传失败，请检查后重试');
     } else {
-      message.warning(`${fileList.length - errorCount} 个成功，${errorCount} 个失败`);
+      message.warning(`${total - errorCount} 个成功，${errorCount} 个失败`);
     }
+  };
+
+  const enqueue = (files: UploadFile[]) => {
+    queueRef.current.push(...files);
+    if (!processingRef.current) {
+      processingRef.current = true;
+      setUploading(true);
+      void processQueue();
+    }
+  };
+
+  const handleChange = ({ fileList: fl }: { fileList: UploadFile[] }) => {
+    setFileList(fl);
+    const newFiles = fl.filter((f) => !handledUidsRef.current.has(f.uid));
+    if (!newFiles.length) return;
+    if (spaceType === 'DEPT' && !deptId) {
+      message.warning('部门空间必须选择部门，请先选择部门再上传');
+      setFileList(fl.filter((f) => !newFiles.includes(f)));
+      return;
+    }
+    newFiles.forEach((f) => {
+      handledUidsRef.current.add(f.uid);
+      setItems((prev) => [...prev, { uid: f.uid, name: f.name, progress: 0, status: 'uploading' }]);
+    });
+    enqueue(newFiles);
   };
 
   const stopUpload = () => {
     abortRef.current = true;
-    setUploading(false);
   };
-
-  const doneCount = items.filter((it) => it.status === 'done').length;
 
   return (
     <Modal
@@ -111,34 +139,17 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
       footer={
         <Space>
           <Button onClick={close} disabled={uploading}>
-            取消
+            关闭
           </Button>
-          {uploading ? (
+          {uploading && (
             <Button danger onClick={stopUpload}>
               停止
-            </Button>
-          ) : (
-            <Button type="primary" onClick={startUpload}>
-              开始上传
             </Button>
           )}
         </Space>
       }
     >
       <Space direction="vertical" style={{ width: '100%' }}>
-        <Upload.Dragger
-          multiple
-          beforeUpload={() => false}
-          fileList={fileList}
-          onChange={({ fileList: fl }) => setFileList(fl)}
-          disabled={uploading}
-        >
-          <p className="ant-upload-drag-icon">
-            <InboxOutlined />
-          </p>
-          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
-          <p className="ant-upload-hint">支持大文件分片上传与断点续传</p>
-        </Upload.Dragger>
         <Space>
           <Select
             value={spaceType}
@@ -162,6 +173,22 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
             />
           )}
         </Space>
+        <Upload.Dragger
+          multiple
+          beforeUpload={() => false}
+          fileList={fileList}
+          onChange={handleChange}
+          disabled={uploading}
+        >
+          <p className="ant-upload-drag-icon">
+            <InboxOutlined />
+          </p>
+          <p className="ant-upload-text">点击或拖拽文件到此区域上传</p>
+          <p className="ant-upload-hint">选择文件后自动上传，支持多文件批量上传、大文件分片与断点续传</p>
+        </Upload.Dragger>
+        <Typography.Text type="secondary">
+          {uploading ? '正在自动上传，请勿关闭窗口…' : '选择文件后将自动开始上传'}
+        </Typography.Text>
         {items.map((it) => (
           <div key={it.uid}>
             <Space style={{ justifyContent: 'space-between', width: '100%' }}>

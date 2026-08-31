@@ -4,7 +4,6 @@ import cn.chenxinjie.uploadfile.core.model.ChunkUploadRequest;
 import cn.chenxinjie.uploadfile.core.model.MergeStatus;
 import cn.chenxinjie.uploadfile.core.service.ResumableUploadService;
 import cn.chenxinjie.pathfinder.dto.PageResult;
-import cn.chenxinjie.pathfinder.entity.FileRecycleBin;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
 import cn.chenxinjie.pathfinder.repository.RoleRepository;
@@ -148,14 +147,15 @@ class FileUploadFlowTest {
         fileService.softDelete(ticket.getFileId(), admin);
 
         // ADMIN 可见回收站记录
-        PageResult<FileRecycleBin> adminPage = fileService.recyclePage(admin, 1, 20);
-        assertTrue(adminPage.getList().stream().anyMatch(rb -> rb.getFileId().equals(ticket.getFileId())),
-                "ADMIN 应能看到回收站记录");
+        PageResult<FileService.RecycleVo> adminPage = fileService.recyclePage(admin, 1, 20);
+        assertTrue(adminPage.getList().stream().anyMatch(rb -> rb.getFileId().equals(ticket.getFileId())
+                        && "rc.txt".equals(rb.getOriginalName())),
+                "ADMIN 应能看到回收站记录（含文件名）");
 
         // 普通用户（无该个人文件权限）不可见
         AuthUser viewer = createUser("viewer", "VIEWER");
         setAuth(viewer);
-        PageResult<FileRecycleBin> viewerPage = fileService.recyclePage(viewer, 1, 20);
+        PageResult<FileService.RecycleVo> viewerPage = fileService.recyclePage(viewer, 1, 20);
         assertTrue(viewerPage.getList().stream().noneMatch(rb -> rb.getFileId().equals(ticket.getFileId())),
                 "无权限用户不应看到该回收站记录");
     }

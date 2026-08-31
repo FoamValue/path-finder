@@ -1,3 +1,5 @@
+name: path-finder
+
 services:
   mysql:
     image: mysql:8.0

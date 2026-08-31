@@ -1,0 +1,4 @@
+# 本地部署覆盖：Docker Hub 不可达时使用本机已有镜像（redis:7 替代 redis:9-alpine）
+services:
+  redis:
+    image: redis:7

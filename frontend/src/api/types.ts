@@ -87,6 +87,10 @@ export interface RecycleItem {
   deletedBy: number;
   deletedAt: string;
   expireAt: string;
+  originalName: string;
+  fileType: string;
+  fileSize: number;
+  spaceType: string;
 }
 
 export interface UploadTicket {

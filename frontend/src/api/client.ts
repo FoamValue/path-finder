@@ -37,7 +37,14 @@ async function handleResponse<T>(resp: Response, url: string): Promise<T> {
   }
   if (resp.status === 403) {
     logger.error('403 无权限', text);
-    throw new ApiError(403, text || '无权限');
+    let msg = '无权限执行该操作';
+    try {
+      const j = JSON.parse(text);
+      if (j && j.message) msg = j.message;
+    } catch {
+      /* 非 JSON 响应时使用默认文案 */
+    }
+    throw new ApiError(403, msg);
   }
   let json: ApiResponse<T>;
   try {

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { get, post, put, del } from '../api/client';
+import { flatDepts } from '../utils/dept';
 import type { DeptNode, UserVo } from '../api/types';
 
 export default function UserPage() {
@@ -86,8 +87,14 @@ export default function UserPage() {
       dataIndex: 'roleCode',
       width: 110,
       render: (r: string) => {
-        const map: Record<string, string> = { ADMIN: 'red', DEPT_ADMIN: 'orange', USER: 'blue', VIEWER: 'default' };
-        return <Tag color={map[r] || 'default'}>{r}</Tag>;
+        const map: Record<string, [string, string]> = {
+          ADMIN: ['系统管理员', 'red'],
+          DEPT_ADMIN: ['部门管理员', 'orange'],
+          USER: ['普通员工', 'blue'],
+          VIEWER: ['访客', 'default'],
+        };
+        const [label, color] = map[r] || [r, 'default'];
+        return <Tag color={color}>{label}</Tag>;
       },
     },
     { title: '状态', dataIndex: 'status', width: 80, render: (s: number) => (s === 1 ? <Tag color="green">启用</Tag> : <Tag color="red">停用</Tag>) },
@@ -153,7 +160,7 @@ export default function UserPage() {
           </Form.Item>
           <Form.Item name="deptId" label="部门" rules={[{ required: true, message: '请选择部门' }]}>
             <Select
-              options={deptTree.map((d) => ({ value: d.id, label: d.name }))}
+              options={flatDepts(deptTree)}
               placeholder="选择部门"
             />
           </Form.Item>

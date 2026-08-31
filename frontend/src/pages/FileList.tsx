@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Input,
@@ -83,28 +83,39 @@ export default function FileList() {
 
   const confirmOwner = async () => {
     if (!ownerTarget) return;
-    await put(`/api/file/${ownerTarget.id}/owner`, {
-      spaceType: ownerSpace,
-      deptId: ownerSpace === 'DEPT' ? ownerDept : null,
-      ownerId: ownerUser,
-    });
-    message.success('归属变更成功');
-    setOwnerTarget(null);
-    fetchList();
+    try {
+      await put(`/api/file/${ownerTarget.id}/owner`, {
+        spaceType: ownerSpace,
+        deptId: ownerSpace === 'DEPT' ? ownerDept : null,
+        ownerId: ownerUser,
+      });
+      message.success('归属变更成功');
+      setOwnerTarget(null);
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || '归属变更失败');
+    }
   };
 
   const download = async (f: FileInfo) => {
-    const d = await get<{ token: string }>(`/api/file/${f.id}/downloadToken`);
-    const resp = await fetch(`/api/file/download/${d.token}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
-    });
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = f.originalName;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const d = await get<{ token: string }>(`/api/file/${f.id}/downloadToken`);
+      const resp = await fetch(`/api/file/download/${d.token}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
+      });
+      if (!resp.ok) {
+        throw new Error(`下载失败（HTTP ${resp.status}）`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.originalName;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      message.error(e.message || '下载失败');
+    }
   };
 
   const batchDownload = async () => {
@@ -112,17 +123,24 @@ export default function FileList() {
       message.warning('请先选择文件');
       return;
     }
-    const d = await post<{ token: string }>('/api/file/batchDownload', { ids: selectedKeys });
-    const resp = await fetch(`/api/file/download/${d.token}`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
-    });
-    const blob = await resp.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `batch-${Date.now()}.zip`;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const d = await post<{ token: string }>('/api/file/batchDownload', { ids: selectedKeys });
+      const resp = await fetch(`/api/file/download/${d.token}`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
+      });
+      if (!resp.ok) {
+        throw new Error(`批量下载失败（HTTP ${resp.status}）`);
+      }
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `batch-${Date.now()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e: any) {
+      message.error(e.message || '批量下载失败');
+    }
   };
 
   const spaceTag = (s: string) => {
@@ -135,11 +153,30 @@ export default function FileList() {
     return <Tag color={color}>{label}</Tag>;
   };
 
+  const deptNameById = useMemo(() => {
+    const m = new Map<number, string>();
+    const walk = (nodes: DeptNode[]) => {
+      for (const n of nodes) {
+        m.set(n.id, n.name);
+        walk(n.children || []);
+      }
+    };
+    walk(deptTree);
+    return m;
+  }, [deptTree]);
+
   const columns = [
     { title: '文件名', dataIndex: 'originalName', ellipsis: true, width: 280 },
     { title: '类型', dataIndex: 'fileType', width: 80, render: (t: string) => (t ? <Tag>{t}</Tag> : '-') },
     { title: '大小', dataIndex: 'fileSize', width: 100, render: (v: number) => formatSize(v) },
     { title: '空间', dataIndex: 'spaceType', width: 80, render: (v: string) => spaceTag(v) },
+    {
+      title: '部门',
+      dataIndex: 'deptId',
+      width: 120,
+      render: (_: unknown, row: FileInfo) =>
+        row.spaceType === 'DEPT' ? deptNameById.get(row.deptId) || '-' : '-',
+    },
     { title: '归属人', dataIndex: 'ownerName', width: 100 },
     { title: '上传人', dataIndex: 'creatorName', width: 100 },
     {
@@ -162,7 +199,18 @@ export default function FileList() {
           <Button size="small" icon={<SwapOutlined />} onClick={() => openOwnerModal(row)}>
             归属
           </Button>
-          <Popconfirm title="确认删除？文件将进入回收站" onConfirm={async () => { await del(`/api/file/${row.id}`); message.success('已删除'); fetchList(); }}>
+          <Popconfirm
+            title="确认删除？文件将进入回收站"
+            onConfirm={async () => {
+              try {
+                await del(`/api/file/${row.id}`);
+                message.success('已删除');
+                fetchList();
+              } catch (e: any) {
+                message.error(e.message || '删除失败');
+              }
+            }}
+          >
             <Button size="small" danger icon={<DeleteOutlined />} />
           </Popconfirm>
         </Space>
@@ -276,11 +324,16 @@ export default function FileList() {
         open={!!renameTarget}
         onCancel={() => setRenameTarget(null)}
         onOk={async () => {
-          const v = await renameForm.validateFields();
-          await put(`/api/file/${renameTarget!.id}/rename`, v);
-          message.success('重命名成功');
-          setRenameTarget(null);
-          fetchList();
+          try {
+            const v = await renameForm.validateFields();
+            await put(`/api/file/${renameTarget!.id}/rename`, v);
+            message.success('重命名成功');
+            setRenameTarget(null);
+            fetchList();
+          } catch (e: any) {
+            if (e?.errorFields) return;
+            message.error(e.message || '重命名失败');
+          }
         }}
       >
         <Form form={renameForm}>

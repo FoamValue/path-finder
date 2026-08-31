@@ -2,7 +2,6 @@ package cn.chenxinjie.pathfinder.controller;
 
 import cn.chenxinjie.pathfinder.dto.ApiResponse;
 import cn.chenxinjie.pathfinder.dto.PageResult;
-import cn.chenxinjie.pathfinder.entity.FileRecycleBin;
 import cn.chenxinjie.pathfinder.security.SecurityUtil;
 import cn.chenxinjie.pathfinder.service.FileService;
 import org.springframework.web.bind.annotation.DeleteMapping;
@@ -27,7 +26,7 @@ public class RecycleController {
     }
 
     @GetMapping("/page")
-    public ApiResponse<PageResult<FileRecycleBin>> page(
+    public ApiResponse<PageResult<FileService.RecycleVo>> page(
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
         return ApiResponse.ok(fileService.recyclePage(SecurityUtil.current(), pageNum, pageSize));
