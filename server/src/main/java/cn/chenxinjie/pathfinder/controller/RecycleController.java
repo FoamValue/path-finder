@@ -4,13 +4,19 @@ import cn.chenxinjie.pathfinder.dto.ApiResponse;
 import cn.chenxinjie.pathfinder.dto.PageResult;
 import cn.chenxinjie.pathfinder.security.SecurityUtil;
 import cn.chenxinjie.pathfinder.service.FileService;
+import lombok.AllArgsConstructor;
+import lombok.Data;
+import lombok.NoArgsConstructor;
 import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
+
+import java.util.List;
 
 /**
  * 回收站接口（保留 30 天）。
@@ -23,6 +29,13 @@ public class RecycleController {
 
     public RecycleController(FileService fileService) {
         this.fileService = fileService;
+    }
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BatchForm {
+        private List<Long> fileIds;
     }
 
     @GetMapping("/page")
@@ -42,5 +55,15 @@ public class RecycleController {
     public ApiResponse<Void> purge(@PathVariable Long fileId) {
         fileService.purge(fileId, SecurityUtil.current());
         return ApiResponse.ok();
+    }
+
+    @PostMapping("/batchRestore")
+    public ApiResponse<FileService.BatchResult> batchRestore(@RequestBody BatchForm form) {
+        return ApiResponse.ok(fileService.batchRestore(form.getFileIds(), SecurityUtil.current()));
+    }
+
+    @PostMapping("/batchPurge")
+    public ApiResponse<FileService.BatchResult> batchPurge(@RequestBody BatchForm form) {
+        return ApiResponse.ok(fileService.batchPurge(form.getFileIds(), SecurityUtil.current()));
     }
 }

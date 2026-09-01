@@ -12,6 +12,7 @@ import {
   UserOutlined,
 } from '@ant-design/icons';
 import { get, post, clearToken } from '../api/client';
+import { APP_COPYRIGHT } from '../config';
 import type { AuthUser } from '../api/types';
 
 const { Sider, Header, Content } = Layout;
@@ -31,9 +32,9 @@ export default function MainLayout() {
   const isDeptAdmin = me?.roleCode === 'DEPT_ADMIN';
 
   const menuItems = [
+    ...(isAdmin ? [{ key: '/storage', icon: <DashboardOutlined />, label: '系统存储' }] : []),
     { key: '/', icon: <FolderOutlined />, label: '文件管理' },
     { key: '/recycle', icon: <DeleteOutlined />, label: '回收站' },
-    ...(isAdmin ? [{ key: '/storage', icon: <DashboardOutlined />, label: '存储监控' }] : []),
     ...(isAdmin ? [{ key: '/dept', icon: <ApartmentOutlined />, label: '部门管理' }] : []),
     ...(isAdmin || isDeptAdmin
       ? [{ key: '/user', icon: <TeamOutlined />, label: isAdmin ? '用户管理' : '本部门成员' }]
@@ -96,6 +97,9 @@ export default function MainLayout() {
         <Content style={{ margin: 16 }}>
           <Outlet />
         </Content>
+        <Layout.Footer style={{ textAlign: 'center', color: '#999', padding: '12px 0' }}>
+          Copyright © {new Date().getFullYear()} {APP_COPYRIGHT}
+        </Layout.Footer>
       </Layout>
     </Layout>
   );

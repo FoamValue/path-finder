@@ -2,13 +2,21 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Space, Table, Popconfirm, Tag, message } from 'antd';
 import { del, get, post } from '../api/client';
 import { formatSize } from '../utils/file';
-import type { RecycleItem } from '../api/types';
+import type { AuthUser, RecycleItem } from '../api/types';
+
+interface BatchResult {
+  success: number;
+  failed: number;
+  message: string;
+}
 
 export default function Recycle() {
+  const [me, setMe] = useState<AuthUser | null>(null);
   const [data, setData] = useState<RecycleItem[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(20);
+  const [selectedKeys, setSelectedKeys] = useState<number[]>([]);
 
   const fetchList = useCallback(async () => {
     const d = await get<{ list: RecycleItem[]; total: number }>(
@@ -19,8 +27,14 @@ export default function Recycle() {
   }, [pageNum, pageSize]);
 
   useEffect(() => {
+    get<AuthUser>('/api/auth/me').then(setMe).catch(() => setMe(null));
+  }, []);
+
+  useEffect(() => {
     fetchList();
   }, [fetchList]);
+
+  const isAdmin = me?.roleCode === 'ADMIN';
 
   const restore = async (id: number) => {
     await post(`/api/recycle/${id}/restore`);
@@ -32,6 +46,36 @@ export default function Recycle() {
     await del(`/api/recycle/${id}/purge`);
     message.success('已物理清除');
     fetchList();
+  };
+
+  const batchRestore = async () => {
+    if (!selectedKeys.length) {
+      message.warning('请先勾选文件');
+      return;
+    }
+    try {
+      const r = await post<BatchResult>('/api/recycle/batchRestore', { fileIds: selectedKeys });
+      message.success(r.message);
+      setSelectedKeys([]);
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || '批量恢复失败');
+    }
+  };
+
+  const batchPurge = async () => {
+    if (!selectedKeys.length) {
+      message.warning('请先勾选文件');
+      return;
+    }
+    try {
+      const r = await post<BatchResult>('/api/recycle/batchPurge', { fileIds: selectedKeys });
+      message.success(r.message);
+      setSelectedKeys([]);
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || '批量清除失败');
+    }
   };
 
   const columns = [
@@ -48,31 +92,48 @@ export default function Recycle() {
           <Button size="small" type="primary" onClick={() => restore(row.fileId)}>
             恢复
           </Button>
-          <Popconfirm title="将物理删除该文件，不可恢复" onConfirm={() => purge(row.fileId)}>
-            <Button size="small" danger>
-              物理清除
-            </Button>
-          </Popconfirm>
+          {isAdmin && (
+            <Popconfirm title="将物理删除该文件，不可恢复" onConfirm={() => purge(row.fileId)}>
+              <Button size="small" danger>
+                物理清除
+              </Button>
+            </Popconfirm>
+          )}
         </Space>
       ),
     },
   ];
 
   return (
-    <Table
-      rowKey="id"
-      columns={columns}
-      dataSource={data}
-      pagination={{
-        current: pageNum,
-        pageSize,
-        total,
-        showTotal: (t) => `共 ${t} 条`,
-        onChange: (p, s) => {
-          setPageNum(p);
-          setPageSize(s);
-        },
-      }}
-    />
+    <>
+      <Space style={{ marginBottom: 12 }} wrap>
+        <Button type="primary" onClick={batchRestore} disabled={!selectedKeys.length}>
+          批量恢复
+        </Button>
+        {isAdmin && (
+          <Popconfirm title={`确认物理清除选中的 ${selectedKeys.length} 个文件？不可恢复`} onConfirm={batchPurge}>
+            <Button danger disabled={!selectedKeys.length}>
+              批量物理清除
+            </Button>
+          </Popconfirm>
+        )}
+      </Space>
+      <Table
+        rowKey="id"
+        columns={columns}
+        dataSource={data}
+        rowSelection={{ selectedRowKeys: selectedKeys, onChange: (keys) => setSelectedKeys(keys as number[]) }}
+        pagination={{
+          current: pageNum,
+          pageSize,
+          total,
+          showTotal: (t) => `共 ${t} 条`,
+          onChange: (p, s) => {
+            setPageNum(p);
+            setPageSize(s);
+          },
+        }}
+      />
+    </>
   );
 }

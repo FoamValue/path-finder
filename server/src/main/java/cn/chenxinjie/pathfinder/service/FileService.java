@@ -442,7 +442,7 @@ public class FileService {
         FileRecycleBin rb = recycleBinRepository.findByFileId(fileId)
                 .orElseThrow(() -> BizException.notFound("回收站记录不存在"));
         FileInfo f = fileInfoRepository.findById(fileId).orElseThrow(() -> BizException.notFound("文件不存在"));
-        if (!user.isAdmin() && !f.getOwnerId().equals(user.getId()) && !"DEPT".equals(f.getSpaceType())) {
+        if (!canOperate(f, user)) {
             throw BizException.forbidden("无权恢复该文件");
         }
         // del/ → files/ 迁回
@@ -482,6 +482,56 @@ public class FileService {
         recycleBinRepository.delete(rb);
         logService.record(user, "PURGE", "FILE", String.valueOf(fileId), f == null ? "" : f.getOriginalName(),
                 "物理清除", true);
+    }
+
+    /* ============ 回收站批量操作（逐条鉴权，跳过无权限项） ============ */
+
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BatchResult {
+        private int success;
+        private int failed;
+        private String message;
+    }
+
+    @Transactional
+    public BatchResult batchRestore(List<Long> fileIds, AuthUser user) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw BizException.badRequest("请选择文件");
+        }
+        int ok = 0;
+        int fail = 0;
+        for (Long id : fileIds) {
+            try {
+                restore(id, user);
+                ok++;
+            } catch (Exception ignore) {
+                fail++;
+            }
+        }
+        return new BatchResult(ok, fail, "恢复成功 " + ok + " 个，失败 " + fail + " 个");
+    }
+
+    @Transactional
+    public BatchResult batchPurge(List<Long> fileIds, AuthUser user) {
+        if (fileIds == null || fileIds.isEmpty()) {
+            throw BizException.badRequest("请选择文件");
+        }
+        if (!user.isAdmin()) {
+            throw BizException.forbidden("仅系统管理员可物理清除");
+        }
+        int ok = 0;
+        int fail = 0;
+        for (Long id : fileIds) {
+            try {
+                purge(id, user);
+                ok++;
+            } catch (Exception ignore) {
+                fail++;
+            }
+        }
+        return new BatchResult(ok, fail, "物理清除成功 " + ok + " 个，失败 " + fail + " 个");
     }
 
     /* ============ 批量下载（ZIP） ============ */

@@ -24,7 +24,9 @@ import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
@@ -160,8 +162,63 @@ class FileUploadFlowTest {
                 "无权限用户不应看到该回收站记录");
     }
 
-    private AuthUser createUser(String username, String roleCode) {
-        User u = new User();
+    @Test
+    void batchRestore_restoresAllSelected() {
+        Long f1 = uploadAndDelete("b1.txt", "batch-restore-1");
+        Long f2 = uploadAndDelete("b2.txt", "batch-restore-2");
+
+        FileService.BatchResult r = fileService.batchRestore(java.util.List.of(f1, f2), admin);
+        assertEquals(2, r.getSuccess());
+        assertEquals(0, r.getFailed());
+
+        PageResult<FileService.RecycleVo> page = fileService.recyclePage(admin, 1, 20);
+        assertTrue(page.getList().stream().noneMatch(rb -> java.util.List.of(f1, f2).contains(rb.getFileId())),
+                "批量恢复后回收站不应再包含这些记录");
+        assertTrue(fileService.page(admin, "PERSONAL", null, null, 1, 20)
+                        .getList().stream().filter(v -> java.util.List.of(f1, f2).contains(v.getId())).count() == 2,
+                "批量恢复后文件应回到列表");
+    }
+
+    @Test
+    void batchPurge_requiresAdmin() {
+        Long f1 = uploadAndDelete("p1.txt", "batch-purge-1");
+        Long f2 = uploadAndDelete("p2.txt", "batch-purge-2");
+
+        AuthUser viewer = createUser("viewer2", "VIEWER");
+        assertThrows(BizException.class, () -> fileService.batchPurge(java.util.List.of(f1, f2), viewer),
+                "非管理员批量物理清除应被拒绝");
+
+        FileService.BatchResult r = fileService.batchPurge(java.util.List.of(f1, f2), admin);
+        assertEquals(2, r.getSuccess());
+        assertTrue(fileService.recyclePage(admin, 1, 20).getList()
+                        .stream().noneMatch(rb -> java.util.List.of(f1, f2).contains(rb.getFileId())),
+                "批量清除后回收站记录应消失");
+    }
+
+    @Test
+    void restore_requiresOperatePermission() {
+        Long fid = uploadAndDelete("perm.txt", "permission-test", "DEPT");
+        AuthUser viewer = createUser("viewer3", "VIEWER");
+        assertThrows(BizException.class, () -> fileService.restore(fid, viewer),
+                "非归属人/非管理员/非部门管理员不得恢复部门空间文件");
+    }
+
+    private Long uploadAndDelete(String name, String content) {
+        return uploadAndDelete(name, content, "PERSONAL");
+    }
+
+    private Long uploadAndDelete(String name, String content, String spaceType) {
+        byte[] data = content.getBytes(StandardCharsets.UTF_8);
+        Long deptId = "DEPT".equals(spaceType) ? 1L : null;
+        FileService.UploadTicket ticket = fileService.uploadTicket(name, (long) data.length, spaceType, deptId, admin);
+        uploadChunk(name, ticket, data, 0, 1);
+        mergeAndWaitSucceeded(ticket.getIdentifier());
+        fileService.confirm(ticket.getFileId(), admin);
+        fileService.softDelete(ticket.getFileId(), admin);
+        return ticket.getFileId();
+    }
+
+    private AuthUser createUser(String username, String roleCode) {        User u = new User();
         u.setUsername(username);
         u.setRealName(username);
         u.setDeptId(1L);
