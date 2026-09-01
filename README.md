@@ -13,7 +13,8 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 - ♻️ **软删除**：回收站保留 30 天，支持恢复与物理清除
 - 📝 **操作审计**：登录/上传/下载/删除/归属变更/改密全量留痕，12 个月归档
 - 💾 **磁盘持久化**：UUID + 日期分目录落盘，使用率 85% 告警，启动自动初始化目录
-- 🐳 **容器化部署**：nginx:alpine（TLS）+ server + redis:9 + mysql:8，存储/证书卷持久化
+- 🔄 **目录同步扫描**：定时扫描导入目录自动入库（默认管理员 + 公共空间），磁盘文件缺失/被更新自动标记并下载提示
+- 🐳 **容器化部署**：nginx:alpine（TLS）+ server + redis:9 + mysql:8，存储目录宿主机挂载 + 证书卷持久化
 
 ## 技术栈
 
@@ -93,6 +94,26 @@ npm run dev
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | localhost / 6379 / 空 | Redis 连接 |
 | `STORAGE_ROOT` | `./data/storage` | 文件存储根目录（files/upload/del/tmp/archive） |
 | `RSA_PRIVATE_KEY_PATH` | 空 | RSA 私钥文件路径，生产挂载持久化，避免重启后密钥变更 |
+| `SYNC_ENABLED` | true | 目录同步扫描开关 |
+| `SYNC_WATCH_DIR` | `./data/import`（Docker 部署为 `/data/storage/import`） | 外部导入目录，放置其中的文件会被定时扫描自动入库（默认管理员 + 公共空间） |
+| `SYNC_INTERVAL` | `5m` | 同步扫描间隔（如 `5m` / `1h`） |
+| `SYNC_SKIP_RECENT_SECONDS` | 30 | 跳过最近 N 秒内写入的文件（防半写） |
+| `SYNC_DEDUP_BY_MD5` | true | 导入时按 MD5 去重 |
+
+### 存储根目录
+
+`STORAGE_ROOT` 为文件存储根目录，启动时自动初始化以下子目录：
+
+| 目录 | 用途 |
+|---|---|
+| `files/` | 正式文件（`files/{yyyy-MM-dd}/{uuid}.{ext}`，UUID + 日期分目录落盘） |
+| `upload/` | 分片上传暂存（分片 `chunks/`、合并产物 `files/`） |
+| `del/` | 回收站物理文件（软删除后移入，恢复时迁回） |
+| `tmp/` | 批量下载 ZIP 等临时文件 |
+| `archive/` | 审计日志归档 CSV |
+| `import/` | 外部导入目录（Docker 部署下位于存储根目录内，见上 `SYNC_WATCH_DIR`） |
+
+**目录同步扫描**：定时（默认 5 分钟，单线程）扫描 `import/`，将新文件按约定命名迁入 `files/` 并入库（归属默认管理员、公共空间）；同时校验所有已入库文件的磁盘状态——物理文件缺失标记为「目录文件已被删除」并拦截下载，内容被替换标记为「源文件已被更新」，下载新版后自动复位。扫描器只读校验，绝不修改或删除磁盘文件。
 
 Redis TTL 策略：所有写入默认「固定基础值 + 随机抖动（±20%）」防缓存雪崩；业务精确语义（验证码/锁定/会话/下载令牌）显式覆盖并关闭抖动，详见 TSDD 第 7 章。
 
@@ -108,7 +129,11 @@ docker compose -f docker/docker-compose.yml up -d
 ```
 
 - 入口：`https://<host>/`（80 端口自动重定向 HTTPS）
-- 数据卷：`storage-data`（文件）、`mysql-data`、`redis-data`、`rsa-key`、`certs`
+- 文件存储：宿主机目录绑定挂载到容器 `/data/storage`，通过 `docker/.env` 中 `STORAGE_HOST_DIR` 指定（默认 `./data`，容器内即存储根目录 `STORAGE_ROOT=/data/storage`，导入目录 `SYNC_WATCH_DIR=/data/storage/import`）
+- 数据卷：`mysql-data`、`redis-data`、`rsa-key`、`certs`
+
+> 本地部署（Docker Hub 不可达，本机已有 redis:7 镜像）时叠加 local 覆盖文件：
+> `docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d`
 
 ## 测试
 

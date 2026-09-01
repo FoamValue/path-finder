@@ -45,9 +45,10 @@ services:
       REDIS_PORT: 6379
       REDIS_PASSWORD: ${REDIS_PASSWORD:-pathfinder123}
       STORAGE_ROOT: /data/storage
+      SYNC_WATCH_DIR: ${SYNC_WATCH_DIR:-/data/storage/import}
       RSA_PRIVATE_KEY_PATH: /data/keys/private.pem
     volumes:
-      - storage-data:/data/storage
+      - ${STORAGE_HOST_DIR:-./data}:/data/storage
       - rsa-key:/data/keys
     depends_on:
       mysql:
@@ -71,6 +72,5 @@ services:
 volumes:
   mysql-data:
   redis-data:
-  storage-data:
   rsa-key:
   certs:
