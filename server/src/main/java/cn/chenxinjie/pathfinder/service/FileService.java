@@ -359,6 +359,53 @@ public class FileService {
                 "归属变更：" + oldDetail + " → " + newDetail, true);
     }
 
+    /* ============ 文件批量操作（逐条鉴权，跳过无权限项） ============ */
+
+    @Transactional
+    public BatchResult batchOwnerChange(List<Long> ids, OwnerChangeForm form, AuthUser user) {
+        if (ids == null || ids.isEmpty()) {
+            throw BizException.badRequest("请选择文件");
+        }
+        if (form.getSpaceType() == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(form.getSpaceType())) {
+            throw BizException.badRequest("非法的目标空间类型");
+        }
+        if ("DEPT".equals(form.getSpaceType())) {
+            if (form.getDeptId() == null) {
+                throw BizException.badRequest("部门空间必须指定目标部门");
+            }
+            deptService.get(form.getDeptId());
+        }
+        int ok = 0;
+        int fail = 0;
+        for (Long id : ids) {
+            try {
+                ownerChange(id, form, user);
+                ok++;
+            } catch (Exception ignore) {
+                fail++;
+            }
+        }
+        return new BatchResult(ok, fail, "归属变更成功 " + ok + " 个，失败 " + fail + " 个");
+    }
+
+    @Transactional
+    public BatchResult batchDelete(List<Long> ids, AuthUser user) {
+        if (ids == null || ids.isEmpty()) {
+            throw BizException.badRequest("请选择文件");
+        }
+        int ok = 0;
+        int fail = 0;
+        for (Long id : ids) {
+            try {
+                softDelete(id, user);
+                ok++;
+            } catch (Exception ignore) {
+                fail++;
+            }
+        }
+        return new BatchResult(ok, fail, "删除成功 " + ok + " 个，失败 " + fail + " 个");
+    }
+
     @Transactional
     public void softDelete(Long id, AuthUser user) {
         FileInfo f = getFile(id);

@@ -65,6 +65,20 @@ public class FileController {
         private List<Long> ids;
     }
 
+    @Data
+    @NoArgsConstructor
+    @AllArgsConstructor
+    public static class BatchOwnerForm {
+        private List<Long> ids;
+        private String spaceType;
+        private Long deptId;
+        private Long ownerId;
+
+        public FileService.OwnerChangeForm toOwnerChangeForm() {
+            return new FileService.OwnerChangeForm(spaceType, deptId, ownerId);
+        }
+    }
+
     @GetMapping("/page")
     public ApiResponse<PageResult<FileService.FileVo>> page(
             @RequestParam(required = false) String spaceType,
@@ -120,6 +134,17 @@ public class FileController {
     public ApiResponse<FileService.DownloadTicket> batchDownload(@RequestBody BatchDownloadForm form)
             throws IOException {
         return ApiResponse.ok(fileService.batchDownload(form.getIds(), SecurityUtil.current()));
+    }
+
+    @PostMapping("/batchDelete")
+    public ApiResponse<FileService.BatchResult> batchDelete(@RequestBody BatchDownloadForm form) {
+        return ApiResponse.ok(fileService.batchDelete(form.getIds(), SecurityUtil.current()));
+    }
+
+    @PutMapping("/batchOwner")
+    public ApiResponse<FileService.BatchResult> batchOwner(@RequestBody BatchOwnerForm form) {
+        return ApiResponse.ok(fileService.batchOwnerChange(form.getIds(), form.toOwnerChangeForm(),
+                SecurityUtil.current()));
     }
 
     /**

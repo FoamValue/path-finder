@@ -34,6 +34,7 @@ export default function FileList() {
 
   // 归属变更弹窗状态
   const [ownerTarget, setOwnerTarget] = useState<FileInfo | null>(null);
+  const [ownerBatch, setOwnerBatch] = useState(false);
   const [ownerSpace, setOwnerSpace] = useState('PERSONAL');
   const [ownerDept, setOwnerDept] = useState<number | undefined>();
   const [ownerUser, setOwnerUser] = useState<number | undefined>();
@@ -72,6 +73,7 @@ export default function FileList() {
   const canManage = me?.roleCode === 'ADMIN' || me?.roleCode === 'DEPT_ADMIN';
 
   const openOwnerModal = async (f: FileInfo) => {
+    setOwnerBatch(false);
     setOwnerTarget(f);
     setOwnerSpace(f.spaceType);
     setOwnerDept(f.deptId);
@@ -81,19 +83,57 @@ export default function FileList() {
     }
   };
 
+  const openOwnerBatch = async () => {
+    if (!selectedKeys.length) {
+      message.warning('请先勾选文件');
+      return;
+    }
+    setOwnerBatch(true);
+    setOwnerTarget({ id: 0, originalName: `选中的 ${selectedKeys.length} 个文件`, spaceType: 'PERSONAL' } as FileInfo);
+    setOwnerSpace('PERSONAL');
+    setOwnerDept(undefined);
+    setOwnerUser(undefined);
+    if (canManage) {
+      get<UserVo[]>('/api/user/page?pageSize=100').then((d: any) => setUsers(d.list || []));
+    }
+  };
+
   const confirmOwner = async () => {
     if (!ownerTarget) return;
+    const body = {
+      spaceType: ownerSpace,
+      deptId: ownerSpace === 'DEPT' ? ownerDept : null,
+      ownerId: ownerUser,
+    };
     try {
-      await put(`/api/file/${ownerTarget.id}/owner`, {
-        spaceType: ownerSpace,
-        deptId: ownerSpace === 'DEPT' ? ownerDept : null,
-        ownerId: ownerUser,
-      });
-      message.success('归属变更成功');
+      if (ownerBatch) {
+        const r = await put<{ message: string }>('/api/file/batchOwner', { ids: selectedKeys, ...body });
+        message.success(r?.message || '归属变更成功');
+      } else {
+        await put(`/api/file/${ownerTarget.id}/owner`, body);
+        message.success('归属变更成功');
+      }
       setOwnerTarget(null);
+      setOwnerBatch(false);
+      setSelectedKeys([]);
       fetchList();
     } catch (e: any) {
       message.error(e.message || '归属变更失败');
+    }
+  };
+
+  const batchDelete = async () => {
+    if (!selectedKeys.length) {
+      message.warning('请先勾选文件');
+      return;
+    }
+    try {
+      const r = await post<{ message: string }>('/api/file/batchDelete', { ids: selectedKeys });
+      message.success(r?.message || '删除成功');
+      setSelectedKeys([]);
+      fetchList();
+    } catch (e: any) {
+      message.error(e.message || '批量删除失败');
     }
   };
 
@@ -245,6 +285,14 @@ export default function FileList() {
         <Button icon={<DownloadOutlined />} onClick={batchDownload} disabled={!selectedKeys.length}>
           批量下载
         </Button>
+        <Button icon={<SwapOutlined />} onClick={openOwnerBatch} disabled={!selectedKeys.length}>
+          批量归属
+        </Button>
+        <Popconfirm title={`确认删除选中的 ${selectedKeys.length} 个文件？文件将进入回收站`} onConfirm={batchDelete}>
+          <Button danger icon={<DeleteOutlined />} disabled={!selectedKeys.length}>
+            批量删除
+          </Button>
+        </Popconfirm>
         <Input.Search
           placeholder="按文件名搜索"
           allowClear

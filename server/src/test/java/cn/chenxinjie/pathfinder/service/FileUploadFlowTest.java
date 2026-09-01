@@ -203,6 +203,45 @@ class FileUploadFlowTest {
                 "非归属人/非管理员/非部门管理员不得恢复部门空间文件");
     }
 
+    @Test
+    void batchDelete_movesToRecycle() {
+        Long f1 = uploadAndConfirm("bd1.txt", "batch-del-1");
+        Long f2 = uploadAndConfirm("bd2.txt", "batch-del-2");
+
+        FileService.BatchResult r = fileService.batchDelete(java.util.List.of(f1, f2), admin);
+        assertEquals(2, r.getSuccess());
+
+        assertTrue(fileService.recyclePage(admin, 1, 20).getList()
+                        .stream().filter(rb -> java.util.List.of(f1, f2).contains(rb.getFileId())).count() == 2,
+                "批量删除后文件应进入回收站");
+        assertTrue(fileService.page(admin, "PERSONAL", null, null, 1, 20)
+                        .getList().stream().noneMatch(v -> java.util.List.of(f1, f2).contains(v.getId())),
+                "批量删除后文件不应出现在列表");
+    }
+
+    @Test
+    void batchOwnerChange_appliesToAll() {
+        Long f1 = uploadAndConfirm("bo1.txt", "batch-owner-1");
+        Long f2 = uploadAndConfirm("bo2.txt", "batch-owner-2");
+
+        FileService.OwnerChangeForm form = new FileService.OwnerChangeForm("PUBLIC", null, null);
+        FileService.BatchResult r = fileService.batchOwnerChange(java.util.List.of(f1, f2), form, admin);
+        assertEquals(2, r.getSuccess());
+
+        assertTrue(fileService.page(admin, "PUBLIC", null, null, 1, 20)
+                        .getList().stream().filter(v -> java.util.List.of(f1, f2).contains(v.getId())).count() == 2,
+                "批量归属变更后文件应变为公共空间");
+    }
+
+    private Long uploadAndConfirm(String name, String content) {
+        byte[] data = content.getBytes(StandardCharsets.UTF_8);
+        FileService.UploadTicket ticket = fileService.uploadTicket(name, (long) data.length, "PERSONAL", null, admin);
+        uploadChunk(name, ticket, data, 0, 1);
+        mergeAndWaitSucceeded(ticket.getIdentifier());
+        fileService.confirm(ticket.getFileId(), admin);
+        return ticket.getFileId();
+    }
+
     private Long uploadAndDelete(String name, String content) {
         return uploadAndDelete(name, content, "PERSONAL");
     }
