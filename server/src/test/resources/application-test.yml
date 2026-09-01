@@ -12,6 +12,12 @@ spring:
 pathfinder:
   storage:
     root: ./target/test-storage
+  sync:
+    enabled: true
+    watch-dir: ./target/test-storage/import
+    interval: 1h
+    skip-recent-seconds: 0
+    dedup-by-md5: true
 
 upload-file:
   storage-dir: ./target/test-storage/upload

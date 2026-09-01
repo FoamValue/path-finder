@@ -58,4 +58,16 @@ public class FileInfo extends BaseEntity {
 
     @Column(name = "del_at")
     private LocalDateTime delAt;
+
+    /**
+     * 磁盘同步状态：READY / MISSING（目录文件已被删除）/ UPDATED（源文件已被更新）。
+     */
+    @Column(name = "disk_status", nullable = false, length = 16)
+    private String diskStatus = "READY";
+
+    /**
+     * 磁盘文件最后修改时间基线，用于同步扫描快速比对。
+     */
+    @Column(name = "disk_modified_at")
+    private LocalDateTime diskModifiedAt;
 }

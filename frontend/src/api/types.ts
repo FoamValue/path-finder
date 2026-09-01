@@ -37,6 +37,7 @@ export interface FileInfo {
   ownerName: string;
   creatorName: string;
   status: string;
+  diskStatus?: string;
   createdAt: string;
 }
 

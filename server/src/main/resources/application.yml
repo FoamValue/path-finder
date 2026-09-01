@@ -36,6 +36,12 @@ pathfinder:
     session-timeout: 30m
     login-max-fail: 5
     login-lock-minutes: 10
+  sync:
+    enabled: ${SYNC_ENABLED:true}
+    watch-dir: ${SYNC_WATCH_DIR:./data/import}
+    interval: ${SYNC_INTERVAL:5m}
+    skip-recent-seconds: ${SYNC_SKIP_RECENT_SECONDS:30}
+    dedup-by-md5: ${SYNC_DEDUP_BY_MD5:true}
 
 upload-file:
   storage-dir: ${STORAGE_ROOT:./data/storage}/upload

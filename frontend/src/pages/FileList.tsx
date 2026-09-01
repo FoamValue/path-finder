@@ -104,7 +104,14 @@ export default function FileList() {
         headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
       });
       if (!resp.ok) {
-        throw new Error(`下载失败（HTTP ${resp.status}）`);
+        let msg = `下载失败（HTTP ${resp.status}）`;
+        try {
+          const body = await resp.json();
+          if (body?.message) msg = body.message;
+        } catch (_) {
+          /* ignore */
+        }
+        throw new Error(msg);
       }
       const blob = await resp.blob();
       const url = URL.createObjectURL(blob);
@@ -153,6 +160,16 @@ export default function FileList() {
     return <Tag color={color}>{label}</Tag>;
   };
 
+  const diskStatusTag = (s?: string) => {
+    if (s === 'MISSING') {
+      return <Tag color="red">目录文件已被删除</Tag>;
+    }
+    if (s === 'UPDATED') {
+      return <Tag color="gold">源文件已被更新</Tag>;
+    }
+    return null;
+  };
+
   const deptNameById = useMemo(() => {
     const m = new Map<number, string>();
     const walk = (nodes: DeptNode[]) => {
@@ -167,6 +184,7 @@ export default function FileList() {
 
   const columns = [
     { title: '文件名', dataIndex: 'originalName', ellipsis: true, width: 280 },
+    { title: '状态', dataIndex: 'diskStatus', width: 130, render: (v: string) => diskStatusTag(v) },
     { title: '类型', dataIndex: 'fileType', width: 80, render: (t: string) => (t ? <Tag>{t}</Tag> : '-') },
     { title: '大小', dataIndex: 'fileSize', width: 100, render: (v: number) => formatSize(v) },
     { title: '空间', dataIndex: 'spaceType', width: 80, render: (v: string) => spaceTag(v) },

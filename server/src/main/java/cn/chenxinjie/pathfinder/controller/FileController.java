@@ -182,6 +182,9 @@ public class FileController {
             }
             out.flush();
         }
+        if (target.getFileId() != null) {
+            fileService.refreshAfterDownload(target.getFileId());
+        }
     }
 
     private String guessContentType(String fileName) {

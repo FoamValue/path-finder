@@ -105,6 +105,7 @@ public class FileService {
         private Long creatorId;
         private String creatorName;
         private String status;
+        private String diskStatus;
         private LocalDateTime createdAt;
     }
 
@@ -199,6 +200,7 @@ public class FileService {
         vo.setOwnerId(f.getOwnerId());
         vo.setCreatorId(f.getCreatorId());
         vo.setStatus(f.getStatus());
+        vo.setDiskStatus(f.getDiskStatus());
         vo.setCreatedAt(f.getCreatedAt());
         try {
             vo.setOwnerName(userName(f.getOwnerId()));
@@ -285,8 +287,18 @@ public class FileService {
         f.setFileSize(f.getFileSize() == 0 ? target.toFile().length() : f.getFileSize());
         f.setFileMd5(md5(target));
         f.setStatus("READY");
+        f.setDiskStatus("READY");
+        f.setDiskModifiedAt(diskModifiedAt(target));
         fileInfoRepository.save(f);
         logService.record(user, "UPLOAD", "FILE", String.valueOf(fileId), f.getOriginalName(), "上传完成", true);
+    }
+
+    private LocalDateTime diskModifiedAt(Path p) {
+        try {
+            return LocalDateTime.ofInstant(Files.getLastModifiedTime(p).toInstant(), java.time.ZoneId.systemDefault());
+        } catch (IOException e) {
+            return LocalDateTime.now();
+        }
     }
 
     private Path resolveMergedPath(String identifier, String originalName) {
@@ -570,6 +582,31 @@ public class FileService {
             return Path.of(target.getRelPath());
         }
         FileInfo f = getFile(target.getFileId());
+        if ("MISSING".equals(f.getDiskStatus())) {
+            throw BizException.notFound("目录文件已经被删除");
+        }
         return physicalPath(f);
+    }
+
+    /**
+     * 下载完成后刷新：UPDATED 文件放行下载新版后，复位 READY 并刷新磁盘基线。
+     */
+    @Transactional
+    public void refreshAfterDownload(Long fileId) {
+        FileInfo f = getFile(fileId);
+        if (!"UPDATED".equals(f.getDiskStatus())) {
+            return;
+        }
+        Path p = physicalPath(f);
+        if (!Files.exists(p)) {
+            return;
+        }
+        f.setFileSize(p.toFile().length());
+        f.setFileMd5(md5(p));
+        f.setDiskModifiedAt(diskModifiedAt(p));
+        f.setDiskStatus("READY");
+        fileInfoRepository.save(f);
+        logService.record(null, "SYNC_REFRESH", "FILE", String.valueOf(fileId), f.getOriginalName(),
+                "下载新版，磁盘状态复位 READY", true);
     }
 }
