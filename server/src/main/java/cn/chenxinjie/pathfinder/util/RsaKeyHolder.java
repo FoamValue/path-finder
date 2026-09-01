@@ -7,7 +7,9 @@ import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.PrivateKey;
 import java.security.PublicKey;
+import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.RSAPublicKeySpec;
 import java.util.Base64;
 
 import javax.crypto.Cipher;
@@ -37,9 +39,12 @@ public class RsaKeyHolder {
                             new String(java.nio.file.Files.readAllBytes(f)).trim());
                     PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(der);
                     PrivateKey pk = KeyFactory.getInstance("RSA").generatePrivate(spec);
-                    KeyPairGenerator gen = KeyPairGenerator.getInstance("RSA");
-                    gen.initialize(2048);
-                    PublicKey pub = gen.generateKeyPair().getPublic();
+                    if (!(pk instanceof RSAPrivateCrtKey crt)) {
+                        throw new IllegalStateException("私钥文件不是标准 RSA CRT 私钥");
+                    }
+                    // 公钥必须从私钥推导，保证与私钥配对
+                    RSAPublicKeySpec pubSpec = new RSAPublicKeySpec(crt.getModulus(), crt.getPublicExponent());
+                    PublicKey pub = KeyFactory.getInstance("RSA").generatePublic(pubSpec);
                     return new KeyPair(pub, pk);
                 }
             }
