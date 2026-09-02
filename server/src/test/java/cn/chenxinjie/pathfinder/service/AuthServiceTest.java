@@ -106,4 +106,126 @@ class AuthServiceTest {
         // 多登录踢出：删除旧会话
         org.mockito.Mockito.verify(redis).delete("auth:session:oldToken");
     }
+
+    @Test
+    void captcha_generatesUuidStores5MinExactTtl() {
+        AuthService.CaptchaVo vo = authService.captcha();
+        assertNotNull(vo.getUuid());
+        assertTrue(!vo.getImage().isBlank(), "验证码图片 base64 非空");
+        org.mockito.Mockito.verify(ttl)
+                .setWithExplicitTtl(org.mockito.ArgumentMatchers.eq("auth:captcha:" + vo.getUuid()), anyString(),
+                        org.mockito.ArgumentMatchers.eq(300L),
+                        org.mockito.ArgumentMatchers.eq(false));
+    }
+
+    @Test
+    void wrongCaptchaCode_rejected() {
+        when(ttl.get("auth:captcha:uuid-x")).thenReturn("CODE");
+        BizException e = assertThrows(BizException.class,
+                () -> authService.login("admin", "enc", "uuid-x", "WRONG", "127.0.0.1", "test"));
+        assertEquals(400, e.getStatus());
+        assertEquals("验证码错误或已过期", e.getMessage());
+    }
+
+    @Test
+    void login_unknownUser_genericMessageWithoutLeak() {
+        when(userRepository.findByUsernameAndDelFlag(eq("ghost"), eq(0))).thenReturn(java.util.Optional.empty());
+        BizException e = assertThrows(BizException.class,
+                () -> authService.login("ghost", "enc", "u", "CODE", "127.0.0.1", "test"));
+        assertEquals(400, e.getStatus());
+        assertEquals("用户名或密码错误", e.getMessage(), "不得泄露用户名是否存在");
+    }
+
+    @Test
+    void loginSuccess_clearsFailCounter_andAuditsSuccess() {
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+        when(ttl.get("auth:fail:admin")).thenReturn(null);
+        authService.login("admin", "enc", "u", "CODE", "127.0.0.1", "UA-1");
+        org.mockito.Mockito.verify(ttl).delete("auth:fail:admin");
+        org.mockito.Mockito.verify(logService)
+                .recordLogin(eq(1L), eq("admin"), eq("127.0.0.1"), eq("UA-1"), eq(true), anyString());
+    }
+
+    @Test
+    void logout_removesSessionAndUserMapping() {
+        when(redis.opsForValue().get("auth:session:tok-1")).thenReturn("7");
+        authService.logout("tok-1");
+        org.mockito.Mockito.verify(redis).delete("auth:user:session:7");
+        org.mockito.Mockito.verify(redis).delete("auth:session:tok-1");
+    }
+
+    @Test
+    void logout_blankOrUnknownToken_isNoOp() {
+        authService.logout("  ");
+        authService.logout(null);
+        org.mockito.Mockito.verify(redis, org.mockito.Mockito.never())
+                .delete(org.mockito.ArgumentMatchers.startsWith("auth:"));
+    }
+
+    @Test
+    void touchSession_renewsSessionAndUserMappingTtl() {
+        // G6：滑动续期需同步刷新 auth:user:session，保持踢出映射一致
+        when(redis.opsForValue().get("auth:session:tok-1")).thenReturn("9");
+        authService.touchSession("tok-1");
+        org.mockito.Mockito.verify(redis).expire("auth:session:tok-1", java.time.Duration.ofMinutes(30));
+        org.mockito.Mockito.verify(redis).expire("auth:user:session:9", java.time.Duration.ofMinutes(30));
+    }
+
+    private AuthUser currentUser(long id) {
+        return new AuthUser(id, "admin", "系统管理员", "ADMIN", 1L, 0);
+    }
+
+    private void stubPasswordChange(String oldPwd, String newPwd, User user) {
+        when(userRepository.findById(1L)).thenReturn(java.util.Optional.ofNullable(user));
+        when(rsa.decrypt(any())).thenReturn(oldPwd.getBytes(StandardCharsets.UTF_8),
+                newPwd.getBytes(StandardCharsets.UTF_8));
+        when(passwordEncoder.matches(oldPwd, user.getPassword())).thenReturn(true);
+        when(passwordEncoder.encode(newPwd)).thenReturn("HASH-" + newPwd);
+    }
+
+    @Test
+    void changePassword_wrongOldPassword_rejected() {
+        User u = new User();
+        u.setId(1L);
+        u.setPassword("$2a$old");
+        when(userRepository.findById(1L)).thenReturn(java.util.Optional.of(u));
+        when(rsa.decrypt(any())).thenReturn("wrong-old".getBytes(StandardCharsets.UTF_8));
+        when(passwordEncoder.matches("wrong-old", "$2a$old")).thenReturn(false);
+
+        BizException e = assertThrows(BizException.class,
+                () -> authService.changePassword("e1", "e2", currentUser(1L), "127.0.0.1", "test"));
+        assertEquals(400, e.getStatus());
+        assertEquals("原密码不正确", e.getMessage());
+    }
+
+    @Test
+    void changePassword_shortNewPassword_rejected() {
+        User u = new User();
+        u.setId(1L);
+        u.setPassword("$2a$old");
+        stubPasswordChange("oldpass", "short", u);
+
+        BizException e = assertThrows(BizException.class,
+                () -> authService.changePassword("e1", "e2", currentUser(1L), "127.0.0.1", "test"));
+        assertEquals(400, e.getStatus());
+        assertEquals("新密码长度不能少于 8 位", e.getMessage());
+    }
+
+    @Test
+    void changePassword_success_updatesPasswordClearsMustChangeAndAudits() {
+        User u = new User();
+        u.setId(1L);
+        u.setUsername("admin");
+        u.setPassword("$2a$old");
+        u.setMustChangePassword(1);
+        stubPasswordChange("oldpass", "newpass123", u);
+
+        authService.changePassword("e1", "e2", currentUser(1L), "127.0.0.1", "test");
+
+        assertEquals(0, u.getMustChangePassword(), "改密后解除强制改密态");
+        assertEquals("HASH-newpass123", u.getPassword());
+        org.mockito.Mockito.verify(userRepository).save(u);
+        org.mockito.Mockito.verify(logService)
+                .record(eq(currentUser(1L)), eq("PASSWORD"), eq("USER"), eq("1"), eq("admin"), anyString(), eq(true));
+    }
 }

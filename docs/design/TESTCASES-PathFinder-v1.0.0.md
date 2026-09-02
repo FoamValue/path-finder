@@ -2,9 +2,10 @@
 
 | 项目 | 内容 |
 |---|---|
-| 关联文档 | PRD v1.0.0 / TSDD v1.0.0 / PLAN v1.0.0 |
+| 关联文档 | PRD v1.0.0 / TSDD v1.0.0 / PLAN v1.0.0 / REVIEW v1.0.0 / SYNC 设计稿 |
 | 测试层次 | 单元 / 集成 / 组件联调 / 前端 / E2E |
 | 优先级 | P0（阻塞发布）/ P1（必须）/ P2（可选） |
+| 迭代登记 | 2026-09-02：登记自动化回归映射（§15）、批量操作与目录同步（§15）、安全矩阵（§16）、已知缺口（§17） |
 
 ---
 
@@ -12,13 +13,17 @@
 
 | 类别 | 工具 | 覆盖模块 |
 |---|---|---|
-| 后端单元/集成 | JUnit 5 + Mockito + MySQL 8（测试库） | 鉴权、锁定、踢出、数据权限、归属变更、审计 |
+| 后端单元/集成 | JUnit 5 + Mockito + MySQL 8（测试库） | 鉴权、锁定、踢出、数据权限、归属变更、审计、调度器、Seed、存储监控 |
+| 安全层 | Spring Security（@WebMvcTest slice 或过滤器直测，Redis/Repo mock） | 端点鉴权矩阵、TokenAuthFilter 白名单/账号状态、会话失效 |
 | 组件联调 | 集成测试直连 `upload-file` | 分片、断点续传、秒传、mergeAsync、Range |
-| 前端单测 | Jest + React Testing Library | 登录、上传交互、权限渲染、列表检索 |
-| E2E | Playwright | 关键全流程 |
-| 性能 | 压测脚本 | 真分页、并发上传、搜索 |
+| 前端单测 | **Vitest** + React Testing Library + jsdom（实际采用 Vitest；非 Jest） | 登录、上传交互、权限渲染、改密、请求封装 |
+| E2E | Playwright（骨架见 `frontend/tests/e2e`，待浏览器/测试库就绪） | 关键全流程 |
+| 性能 | 压测脚本（待建） | 真分页、并发上传、搜索 |
 
-环境：MySQL 8 + Redis 9；大文件测试数据：1MB、5MB+、200MB、500MB。
+环境：MySQL 8（`pathfinder_test`，集成/矩阵用例依赖）+ Redis 9（生产必需；自动化矩阵已避免依赖 Redis 实例）；大文件测试数据：1MB、5MB+、200MB、500MB。
+
+> 技术选型注：实际前端工程为 Vite + React + AntD（非 UmiJS），单测框架为 Vitest；Boot 4 下 `@WebMvcTest` 位于独立产物 `spring-boot-starter-webmvc-test`。文档其余处按现状理解。
+
 
 ---
 
@@ -286,3 +291,91 @@
 | TC-DEP-002 | P1 | 中间件认证（G8） | 无密码直连 Redis/MySQL 端口 | 认证失败被拒；应用正常启动且使用加密连接 |
 | TC-DEP-003 | P1 | RSA 密钥持久化（G11） | 重启后端容器后再次登录 | 登录正常（密钥卷沿用）；数据库密码仍可解密验证 |
 | TC-DEP-004 | P1 | 证书/密钥卷缺失 fail-fast | 删除证书或 RSA 密钥卷后启动 | nginx 或后端启动失败并给出明确错误，不静默降级 |
+
+---
+
+## 15. 功能迭代补登记（原文档缺失 → 已补齐自动化）
+
+> 以下新代码/新功能此前未登记 TC，现已补齐代码级用例，登记于此保持文档与代码一致。
+
+### 15.1 批量文件操作（commit 5f2d942 批量归属与批量删除）
+
+| ID | 优先级 | 用例 | 预期 | 自动化 |
+|---|---|---|---|---|
+| TC-BATCH-001 | P1 | 批量删除 | 全部进入回收站，列表移除 | `FileUploadFlowTest.batchDelete_movesToRecycle` |
+| TC-BATCH-002 | P1 | 批量恢复 | 全部回到原空间列表 | `FileUploadFlowTest.batchRestore_restoresAllSelected` |
+| TC-BATCH-003 | P1 | 批量物理清除 | 仅 ADMIN 可执行；非管理员 403 | `FileUploadFlowTest.batchPurge_requiresAdmin` |
+| TC-BATCH-004 | P1 | 批量归属变更 | 全部按目标空间/部门生效 | `FileUploadFlowTest.batchOwnerChange_appliesToAll` |
+| TC-BATCH-005 | P1 | 批量中逐条鉴权 | 无权限项跳过并计数失败 | `FileService.batchXxx`（逐条 try/ignore + success/fail 计数） |
+| TC-BATCH-006 | P2 | 恢复权限 | 非归属人/非管理员/非部门管理员恢复部门空间文件被拒 | `FileUploadFlowTest.restore_requiresOperatePermission` |
+
+### 15.2 目录同步扫描（SYNC 设计稿，评审通过）
+
+| ID | 优先级 | 用例 | 预期 | 自动化 |
+|---|---|---|---|---|
+| TC-SYNC-001 | P0 | 导入目录新文件入库 | 迁入 files/，归属 admin + PUBLIC + READY | `SyncScannerServiceTest.importNewFile_createsRecord_adminPublicReady` |
+| TC-SYNC-002 | P0 | MD5 去重 | 重复内容跳过，源文件保留 | `import_skipsDuplicateByMd5` |
+| TC-SYNC-003 | P0 | 磁盘文件缺失 | 标记 MISSING，不删库记录 | `missingFile_marksMissing` |
+| TC-SYNC-004 | P0 | touch 不误报 | 仅 mtime 变化保持 READY 并刷基线 | `touchOnly_keepsReady` |
+| TC-SYNC-005 | P0 | 内容替换 | 标记 UPDATED | `contentReplaced_marksUpdated` |
+| TC-SYNC-006 | P0 | MISSING 复活（同内容） | 复位 READY | `missingFileReappears_restoresReady` |
+| TC-SYNC-007 | P0 | 下载拦截 | MISSING 阻断下载；UPDATED 放行并刷新复位 | `download_missing_blocked` / `download_updated_refreshesToReady` |
+| TC-SYNC-008 | P0 | 防重入 | 扫描进行中本次触发跳过 | `scan_skipsWhenAlreadyRunning` |
+| TC-SYNC-009 | P1 | 历史数据无基线 | 仅建立基线不误标 | `legacyRecord_withoutDiskBaseline_establishesBaselineWithoutFlag` |
+| TC-SYNC-010 | P1 | MISSING 复活（内容不同） | 标记 UPDATED 而非复位 | `missingFileReappears_withDifferentContent_marksUpdated` |
+| TC-SYNC-011 | P1 | UPDATED 还原为原内容 | 复位 READY | `updatedFile_restoredToOriginalContent_resetsReady` |
+| TC-SYNC-012 | P1 | 内容持续变更 | 保持 UPDATED | `contentReplacedAgain_keepsUpdatedUntilRestored` |
+| TC-SYNC-013 | P1 | skip-recent 半写防护 | 窗口内文件不导入 | `import_skipsFileWithinSkipRecentWindow` |
+| TC-SYNC-014 | P1 | 嵌套子目录导入 | 递归扫描并入库 | `import_recursiveNestedDirectories` |
+| TC-SYNC-015 | P1 | sync.enabled=false | 定时任务跳过 | `scheduledScan_whenDisabled_skips` |
+
+> 运行依赖：MySQL（@SpringBootTest，profile `test`）。
+
+---
+
+## 16. 自动化回归覆盖映射（截至 2026-09-02）
+
+> 目的：让每条重要 TC 都能反查到落地代码与运行条件；纯单元/安全层无需 DB，集成/矩阵需 MySQL。
+
+| 自动化测试类 | 覆盖 TC / 行为 | 运行条件 |
+|---|---|---|
+| `AuthServiceTest` | LOGIN-002/003/004(部分)/006/007/008/010/013/015、G6 会话映射续期、改密/登出 | 纯单元 |
+| `util/CaptchaUtilTest` | LOGIN-001/003（验证码生成） | 纯单元 |
+| `util/PathUtilTest`、`RsaKeyHolderTest`、`RedisTtlPolicyTest` | 路径/扩展名、DEP-003、TTL 抖动 | 纯单元 |
+| `security/TokenAuthFilterTest` | LOGIN-016/019/020/021/022/023（过滤器语义） | 纯单元 |
+| `security/EndpointSecurityMatrixTest` | TSDD 5.1 端点矩阵、LOGIN-019/020/022/023（HTTP 状态） | 纯单元（@WebMvcTest） |
+| `service/DeptServiceTest` | ORG-004/005/006（删除约束）、数据权限集合 V、部门树、缓存失效 | 纯单元 |
+| `service/UserServiceTest` | ORG-007~016（含 G12 删除前移交）、分页范围 | 纯单元 |
+| `service/DataPermissionMatrixTest` | PERM-001~008 全矩阵、OWNER-001~009(越权部分)、上传部门必选、归属审计 | MySQL |
+| `controller/FileControllerDownloadTest` | DL-003/004/005、Range 200/206/416、ZIP 头 | 纯单元 |
+| `config/StorageCleanupSchedulerTest` | FILE-011/014（到期清理 / UPLOADING 孤儿，G2） | 纯单元 |
+| `config/DataInitializerTest` | ORG-014、G1 Seed | 纯单元 |
+| `service/StorageServiceTest` | ST-002/003/007 降级路径、目录初始化 | 纯单元 |
+| `service/LogServiceTest` | AUDIT-001/002/003/009（record/recordLogin/归档 CSV） | 纯单元 |
+| `service/SyncScannerServiceTest` | SYNC-001~015、下载拦截与刷新 | MySQL |
+| `service/FileUploadFlowTest` | UP-001/003(部分)/006/010/011、FILE-009~012(部分)、BATCH-001~006 | MySQL |
+| 前端 `pages/Login.test.tsx`、`api/client.test.ts` | UI-001/002、401/403/组件错误码映射、会话失效跳转 | Vitest |
+| 前端 `pages/ChangePassword.test.tsx` | 改密页必填/一致性/最小长度/成功回登录/失败提示 | Vitest |
+| 前端 `components/MainLayout.test.tsx` | UI-003 角色菜单（ADMIN/USER/DEPT_ADMIN） | Vitest |
+| 前端 `components/UploadModal.test.tsx` | UI-004、UP-004 部门空间必选拦截 | Vitest |
+| 前端 `pages/FileList.test.tsx` | UI-006/007：列表/状态角标/搜索参数/重命名/归属弹窗 | Vitest |
+| 前端 `pages/Recycle.test.tsx` | FILE-009~012：恢复/物理清除(角色)/批量恢复 | Vitest |
+| 前端 `pages/UserPage.test.tsx` | ORG-007~013：行渲染/启停用/重置密码/删除确认/弹窗 | Vitest |
+| 前端 `pages/DeptPage.test.tsx` | ORG-001~005：树展开/编辑/新增根与子部门 | Vitest |
+| 前端 `pages/StoragePage.test.tsx` | ST-003/004：统计卡片与 85% 告警 | Vitest |
+| 前端 `pages/LogPage.test.tsx` | AUDIT-006：日志行渲染与操作人筛选参数 | Vitest |
+| 前端 `utils/*`（file/dept/uploadTask） | 容量格式、部门扁平化、分片/断点/合并/超时 | Vitest |
+
+---
+
+## 17. 已知实现缺口与待办（影响"全绿"的验收项）
+
+| # | 项 | 现状 | 建议 |
+|---|---|---|---|
+| X1 | 越权操作审计留痕 | 403 直接抛 `BizException.forbidden`，无 `success=0` 审计写入（TSDD 9.4 `AuditAspect` 未实现） | 补实现后启用 TC-AUDIT-007 / OWNER-004 审计断言 |
+| X2 | 停用账号登录口径 | `AuthService` 将 status=0 并入"用户名或密码错误"并累加失败计数，与 PRD F1「账号已停用，请联系管理员」不符 | 产品定口径后固化测试 |
+| X3 | 回收站恢复校验 | `restore` 未校验原部门/存储路径有效性（TSDD 8.2/G7 要求） | 补实现 + TC-FILE-015 物理路径断言 |
+| X4 | 页面组件覆盖 | FileList/Recycle/User/Dept/Log/Storage/ChangePassword/MainLayout/UploadModal/Login 已覆盖；批量归属提交、回收站/用户批量勾选等深层弹窗交互待补 | 追加覆盖（优先级低于 X1~X3） |
+| X5 | E2E（Playwright） | 骨架已建（`frontend/tests/e2e`），验证码阻断全自动登录 | 测试环境提供验证码绕过/种子账号后跑 TC-E2E-001~003 |
+| X6 | 性能与 CI | 无压测脚本；无 `.github` CI 与 JaCoCo/Jest coverage 门禁 | 建 CI（对应 PLAN PF-005）+ 性能脚本后启用 TC-PERF |
+| X7 | 集成测试运行条件 | `@SpringBootTest` 需 MySQL `pathfinder_test` 实例 | 建议 Testcontainers / CI 服务化，本地 `mvn test` 前先就绪 MySQL |

@@ -26,6 +26,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -190,6 +191,113 @@ class SyncScannerServiceTest {
             assertTrue(Files.exists(watch.resolve("skip.txt")));
         } finally {
             running.set(false);
+        }
+    }
+
+    @Test
+    void legacyRecord_withoutDiskBaseline_establishesBaselineWithoutFlag() throws Exception {
+        FileInfo f = seedReady("files/2026-09-01/legacy.txt", "legacy.txt", "base-content");
+        f.setDiskModifiedAt(null); // 功能上线前入库的历史数据
+        fileInfoRepository.save(f);
+
+        syncScannerService.scan();
+
+        FileInfo after = reload(f.getId());
+        assertEquals("READY", after.getDiskStatus(), "历史数据仅建立基线不应误报");
+        assertNotNull(after.getDiskModifiedAt(), "应写入磁盘 mtime 基线");
+        assertEquals("base-content",
+                new String(Files.readAllBytes(root.resolve(after.getStoragePath()))));
+    }
+
+    @Test
+    void missingFileReappears_withDifferentContent_marksUpdated() throws Exception {
+        FileInfo f = seedReady("files/2026-09-01/re-appear.txt", "re-appear.txt", "orig");
+        Path p = root.resolve(f.getStoragePath());
+        Files.delete(p);
+        syncScannerService.scan();
+        assertEquals("MISSING", reload(f.getId()).getDiskStatus());
+
+        Files.writeString(p, "BRAND-NEW-CONTENT-DIFFERENT");
+        syncScannerService.scan();
+
+        assertEquals("UPDATED", reload(f.getId()).getDiskStatus(),
+                "复活但内容不一致应标记 UPDATED 而非复位 READY");
+    }
+
+    @Test
+    void updatedFile_restoredToOriginalContent_resetsReady() throws Exception {
+        FileInfo f = seedReady("files/2026-09-01/revert.txt", "revert.txt", "orig-content");
+        Path p = root.resolve(f.getStoragePath());
+        Files.delete(p);
+        syncScannerService.scan();
+        assertEquals("MISSING", reload(f.getId()).getDiskStatus());
+
+        Files.writeString(p, "SOME-REPLACED-LONGER-CONTENT-AAAA");
+        syncScannerService.scan();
+        assertEquals("UPDATED", reload(f.getId()).getDiskStatus());
+
+        Files.writeString(p, "orig-content"); // 内容还原为库内 md5
+        syncScannerService.scan();
+
+        assertEquals("READY", reload(f.getId()).getDiskStatus(),
+                "内容还原为原 MD5 应复位 READY");
+    }
+
+    @Test
+    void contentReplacedAgain_keepsUpdatedUntilRestored() throws Exception {
+        FileInfo f = seedReady("files/2026-09-01/keep.txt", "keep.txt", "orig");
+        Path p = root.resolve(f.getStoragePath());
+        Files.writeString(p, "REPLACED-VERSION-1");
+        syncScannerService.scan();
+        assertEquals("UPDATED", reload(f.getId()).getDiskStatus());
+
+        Files.writeString(p, "REPLACED-VERSION-2-DIFFERENT");
+        syncScannerService.scan();
+
+        assertEquals("UPDATED", reload(f.getId()).getDiskStatus(),
+                "持续与库内 MD5 不一致应保持 UPDATED");
+    }
+
+    @Test
+    void import_skipsFileWithinSkipRecentWindow() throws Exception {
+        var sync = pathProperties.getSync();
+        long original = sync.getSkipRecentSeconds();
+        sync.setSkipRecentSeconds(60);
+        try {
+            Files.writeString(watch.resolve("half-written.txt"), "still-writing");
+            syncScannerService.scan();
+            assertNull(findByName("half-written.txt"), "skip-recent 窗口内文件不得导入（防半写）");
+            assertTrue(Files.exists(watch.resolve("half-written.txt")), "应保留源文件待下次扫描");
+        } finally {
+            sync.setSkipRecentSeconds(original);
+        }
+    }
+
+    @Test
+    void import_recursiveNestedDirectories() throws Exception {
+        Path nested = watch.resolve("sub").resolve("deep");
+        Files.createDirectories(nested);
+        Files.writeString(nested.resolve("nested.txt"), "nested-content");
+
+        syncScannerService.scan();
+
+        FileInfo f = findByName("nested.txt");
+        assertNotNull(f, "嵌套子目录文件应被递归导入");
+        assertFalse(Files.exists(nested.resolve("nested.txt")), "源文件应迁出导入目录");
+        assertTrue(Files.exists(root.resolve(f.getStoragePath())), "应迁入 files/ 统一存储");
+    }
+
+    @Test
+    void scheduledScan_whenDisabled_skips() throws Exception {
+        var sync = pathProperties.getSync();
+        boolean original = sync.isEnabled();
+        sync.setEnabled(false);
+        try {
+            Files.writeString(watch.resolve("disabled.txt"), "not imported");
+            syncScannerService.scheduledScan();
+            assertNull(findByName("disabled.txt"), "sync.enabled=false 时不应扫描导入");
+        } finally {
+            sync.setEnabled(original);
         }
     }
 

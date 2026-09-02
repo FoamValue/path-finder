@@ -8,6 +8,8 @@ server/target/
 frontend/node_modules/
 frontend/dist/
 *.tsbuildinfo
+frontend/test-results/
+frontend/playwright-report/
 
 # 运行时数据
 server/data/
