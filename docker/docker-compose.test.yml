@@ -1,0 +1,14 @@
+# 本地自动化测试覆盖：为宿主机运行 mvn test 暴露中间件端口并初始化测试库。
+# 用法：
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.test.yml up -d mysql redis
+#   cd server && mvn test
+services:
+  mysql:
+    ports:
+      - "3306:3306"
+    environment:
+      MYSQL_DATABASE: pathfinder_test   # 覆盖：应用跑全栈用主 compose，测试用本库
+
+  redis:
+    ports:
+      - "6379:6379"
