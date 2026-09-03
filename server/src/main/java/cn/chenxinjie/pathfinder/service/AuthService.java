@@ -1,5 +1,6 @@
 package cn.chenxinjie.pathfinder.service;
 
+import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.security.AuthUser;
@@ -30,19 +31,22 @@ public class AuthService {
     private final RedisTtlPolicy ttl;
     private final StringRedisTemplate redis;
     private final LogService logService;
+    private final PathProperties pathProperties;
 
     public AuthService(UserRepository userRepository,
                        PasswordEncoder passwordEncoder,
                        RsaKeyHolder rsaKeyHolder,
                        RedisTtlPolicy ttl,
                        StringRedisTemplate redis,
-                       LogService logService) {
+                       LogService logService,
+                       PathProperties pathProperties) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.rsaKeyHolder = rsaKeyHolder;
         this.ttl = ttl;
         this.redis = redis;
         this.logService = logService;
+        this.pathProperties = pathProperties;
     }
 
     @Data
@@ -69,13 +73,15 @@ public class AuthService {
             logService.recordLogin(null, username, ip, ua, false, "账号锁定中");
             throw BizException.forbidden("账号已锁定，请 10 分钟后再试");
         }
-        // 1. 验证码（一次性）
-        String code = ttl.get("auth:captcha:" + captchaUuid);
-        if (code == null || !code.equalsIgnoreCase(captchaCode)) {
-            logService.recordLogin(null, username, ip, ua, false, "验证码错误或已过期");
-            throw BizException.badRequest("验证码错误或已过期");
+        // 1. 验证码（一次性）；测试环境可整体关闭（captcha-enabled=false）
+        if (pathProperties.getSecurity().isCaptchaEnabled()) {
+            String code = ttl.get("auth:captcha:" + captchaUuid);
+            if (code == null || !code.equalsIgnoreCase(captchaCode)) {
+                logService.recordLogin(null, username, ip, ua, false, "验证码错误或已过期");
+                throw BizException.badRequest("验证码错误或已过期");
+            }
+            ttl.delete("auth:captcha:" + captchaUuid);
         }
-        ttl.delete("auth:captcha:" + captchaUuid);
 
         // 2. 解密 + 校验凭证
         String password = decryptPassword(encryptedPassword);

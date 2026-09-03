@@ -1,5 +1,6 @@
 package cn.chenxinjie.pathfinder.service;
 
+import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.security.AuthUser;
@@ -61,7 +62,7 @@ class AuthServiceTest {
         when(rsa.decrypt(any())).thenReturn("Init@123".getBytes(StandardCharsets.UTF_8));
         when(ttl.get(anyString())).thenReturn("CODE");
 
-        authService = new AuthService(userRepository, passwordEncoder, rsa, ttl, redis, logService);
+        authService = new AuthService(userRepository, passwordEncoder, rsa, ttl, redis, logService, new PathProperties());
     }
 
     @Test
@@ -116,6 +117,19 @@ class AuthServiceTest {
                 .setWithExplicitTtl(org.mockito.ArgumentMatchers.eq("auth:captcha:" + vo.getUuid()), anyString(),
                         org.mockito.ArgumentMatchers.eq(300L),
                         org.mockito.ArgumentMatchers.eq(false));
+    }
+
+    @Test
+    void captchaDisabled_loginSkipsCaptchaValidation() {
+        // E2E 测试开关：captcha-enabled=false 时不校验验证码，仅校验凭证
+        when(ttl.get("auth:captcha:whatever")).thenReturn(null);
+        when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
+        PathProperties props = new PathProperties();
+        props.getSecurity().setCaptchaEnabled(false);
+        AuthService bypass = new AuthService(userRepository, passwordEncoder, rsa, ttl, redis, logService, props);
+        String token = bypass.login("admin", "enc", "whatever", "ignore", "127.0.0.1", "test");
+        assertNotNull(token, "验证码关闭后任意验证码文本均可通过");
+        org.mockito.Mockito.verify(ttl, org.mockito.Mockito.never()).delete("auth:captcha:whatever");
     }
 
     @Test

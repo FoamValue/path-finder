@@ -1,0 +1,13 @@
+# 本地 E2E 自动化测试栈覆盖（与主部署同 project path-finder，便于 down/up 切换）：
+#   server → pathfinder_test 测试库（独立于 pathfinder 生产库，跑前由脚本重置）
+#   CAPTCHA_ENABLED=false        验证码绕过（仅测试环境）
+#   ADMIN_BOOTSTRAP_PASSWORD    确定性种子账号 admin（不强制改密，E2E 可重复登录）
+#   SYNC_ENABLED=false          关闭目录同步，避免干扰用例
+# 由 scripts/run-e2e-docker.sh 编排：先 down 现有栈，跑完自动恢复原栈。
+services:
+  server:
+    environment:
+      MYSQL_DB: pathfinder_test
+      CAPTCHA_ENABLED: "false"
+      ADMIN_BOOTSTRAP_PASSWORD: ${ADMIN_BOOTSTRAP_PASSWORD:-E2e@12345}
+      SYNC_ENABLED: "false"

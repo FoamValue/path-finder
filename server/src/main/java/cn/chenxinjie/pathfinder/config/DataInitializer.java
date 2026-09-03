@@ -31,16 +31,19 @@ public class DataInitializer implements ApplicationRunner {
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
+    private final PathProperties pathProperties;
 
     public DataInitializer(StorageService storageService, RoleRepository roleRepository,
                            DeptRepository deptRepository, UserRepository userRepository,
-                           UserRoleRepository userRoleRepository, PasswordEncoder passwordEncoder) {
+                           UserRoleRepository userRoleRepository, PasswordEncoder passwordEncoder,
+                           PathProperties pathProperties) {
         this.storageService = storageService;
         this.roleRepository = roleRepository;
         this.deptRepository = deptRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.passwordEncoder = passwordEncoder;
+        this.pathProperties = pathProperties;
     }
 
     @Override
@@ -88,12 +91,15 @@ public class DataInitializer implements ApplicationRunner {
             return;
         }
         Dept root = deptRepository.findAll().stream().findFirst().orElseThrow();
+        String bootstrapPwd = pathProperties.getSecurity().getBootstrapAdminPassword();
+        boolean bootstrap = bootstrapPwd != null && !bootstrapPwd.isBlank();
         User admin = new User();
         admin.setUsername("admin");
         admin.setRealName("系统管理员");
         admin.setDeptId(root.getId());
-        admin.setPassword(passwordEncoder.encode("Init@123"));
-        admin.setMustChangePassword(1);
+        // 自动化测试可经 ADMIN_BOOTSTRAP_PASSWORD 注入固定密码并跳过强制改密；默认 Init@123 + 首登强制改密
+        admin.setPassword(passwordEncoder.encode(bootstrap ? bootstrapPwd : "Init@123"));
+        admin.setMustChangePassword(bootstrap ? 0 : 1);
         admin.setStatus(1);
         userRepository.save(admin);
         roleRepository.findByRoleCode("ADMIN").ifPresent(role -> {
@@ -102,6 +108,10 @@ public class DataInitializer implements ApplicationRunner {
             ur.setRoleId(role.getId());
             userRoleRepository.save(ur);
         });
-        log.info("已初始化系统管理员 admin（初始密码 Init@123，首次登录强制改密）");
+        if (bootstrap) {
+            log.info("已初始化系统管理员 admin（测试种子账号，密码由 ADMIN_BOOTSTRAP_PASSWORD 提供，不强制改密）");
+        } else {
+            log.info("已初始化系统管理员 admin（初始密码 Init@123，首次登录强制改密）");
+        }
     }
 }

@@ -76,7 +76,7 @@ class DataInitializerTest {
         });
 
         DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
-                userRepository, userRoleRepository, encoder);
+                userRepository, userRoleRepository, encoder, new PathProperties());
         initializer.run(null);
 
         // 四角色
@@ -104,13 +104,53 @@ class DataInitializerTest {
     }
 
     @Test
+    void emptyDatabase_withBootstrapAdminPassword_seedsDeterministicAccount() {
+        when(roleRepository.count()).thenReturn(0L);
+        when(deptRepository.count()).thenReturn(0L);
+        when(userRepository.existsByUsername("admin")).thenReturn(false);
+        List<Role> saved = new ArrayList<>();
+        when(roleRepository.save(any(Role.class))).thenAnswer(inv -> {
+            Role r = inv.getArgument(0);
+            r.setId((long) saved.size() + 1);
+            saved.add(r);
+            return r;
+        });
+        java.util.concurrent.atomic.AtomicReference<Dept> rootRef = new java.util.concurrent.atomic.AtomicReference<>();
+        when(deptRepository.save(any(Dept.class))).thenAnswer(inv -> {
+            Dept d = inv.getArgument(0);
+            d.setId(10L);
+            rootRef.set(d);
+            return d;
+        });
+        when(deptRepository.findAll()).thenAnswer(inv -> List.of(rootRef.get()));
+        Role adminRole = new Role();
+        adminRole.setId(4L);
+        adminRole.setRoleCode("ADMIN");
+        when(roleRepository.findByRoleCode("ADMIN")).thenReturn(Optional.of(adminRole));
+
+        PathProperties props = new PathProperties();
+        props.getSecurity().setBootstrapAdminPassword("E2e@12345");
+
+        DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
+                userRepository, userRoleRepository, encoder, props);
+        initializer.run(null);
+
+        ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+        User admin = userCaptor.getValue();
+        assertEquals("admin", admin.getUsername());
+        assertTrue(encoder.matches("E2e@12345", admin.getPassword()), "种子账号密码来自 bootstrap 配置");
+        assertEquals(0, admin.getMustChangePassword(), "bootstrap 账号不强制改密，保证 E2E 可重复登录");
+    }
+
+    @Test
     void alreadySeeded_skipsIdempotently() {
         when(roleRepository.count()).thenReturn(4L);
         when(deptRepository.count()).thenReturn(1L);
         when(userRepository.existsByUsername("admin")).thenReturn(true);
 
         DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
-                userRepository, userRoleRepository, encoder);
+                userRepository, userRoleRepository, encoder, new PathProperties());
         initializer.run(null);
 
         verify(roleRepository, never()).save(any());

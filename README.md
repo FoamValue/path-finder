@@ -94,6 +94,8 @@ npm run dev
 | `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | localhost / 6379 / 空 | Redis 连接 |
 | `STORAGE_ROOT` | `./data/storage` | 文件存储根目录（files/upload/del/tmp/archive） |
 | `RSA_PRIVATE_KEY_PATH` | 空 | RSA 私钥文件路径，生产挂载持久化，避免重启后密钥变更 |
+| `CAPTCHA_ENABLED` | true | 登录验证码开关；仅自动化测试部署置 false（绕过验证码），生产必须保持 true |
+| `ADMIN_BOOTSTRAP_PASSWORD` | 空 | 空库 Seed 时给首个 admin 的固定密码（配置后不强制改密），用于可重复的 E2E 种子账号 |
 | `SYNC_ENABLED` | true | 目录同步扫描开关 |
 | `SYNC_WATCH_DIR` | `./data/import`（Docker 部署为 `/data/storage/import`） | 外部导入目录，放置其中的文件会被定时扫描自动入库（默认管理员 + 公共空间） |
 | `SYNC_INTERVAL` | `5m` | 同步扫描间隔（如 `5m` / `1h`） |
@@ -138,9 +140,26 @@ docker compose -f docker/docker-compose.yml up -d
 ## 测试
 
 ```bash
-cd server && mvn test          # 后端单元测试（JUnit 5 + Mockito）
+cd server && mvn test          # 后端单元/集成测试（JUnit 5 + Mockito；集成用例需 MySQL pathfinder_test）
 cd frontend && npm test        # 前端单元测试（Vitest）
 ```
+
+后端集成测试运行前先就绪 MySQL/Redis 测试库（容器化）：
+
+```bash
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml -f docker/docker-compose.test.yml up -d mysql redis
+# 然后 cd server && mvn test
+```
+
+E2E（Playwright + 本机 Chrome，独立 Docker E2E 栈，跑完自动恢复原部署栈）：
+
+```bash
+bash scripts/run-e2e-docker.sh
+# 等价：down 现有栈 → 重置 pathfinder_test → 以验证码绕过 + 种子账号启动 E2E 栈
+#       → npm run test:e2e（01/02/03 号用例）→ EXIT 时恢复原栈
+```
+
+E2E 覆盖：登录页冒烟、TC-E2E-001 全链路（上传/搜索/下载/归属/删除/回收站恢复/审计）、TC-E2E-003 越权拦截与强制改密。测试专用开关均默认关闭，生产不生效。
 
 覆盖率门禁（见 PRD §6）：后端整体行覆盖 ≥80%、核心模块 ≥85%；前端核心交互 ≥70%。
 

@@ -54,6 +54,10 @@ public class PathProperties {
         private long sessionTimeoutMinutes = 30;
         private int loginMaxFail = 5;
         private int loginLockMinutes = 10;
+        /** 登录验证码开关（默认开启；测试环境可设 CAPTCHA_ENABLED=false 绕过，仅限非生产部署） */
+        private boolean captchaEnabled = true;
+        /** 空库 Seed 时若配置则用该密码创建首个 admin 且不强制改密，用于可重复的自动化测试种子账号 */
+        private String bootstrapAdminPassword = "";
     }
 
     @Data

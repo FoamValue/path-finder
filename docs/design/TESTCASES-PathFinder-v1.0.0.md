@@ -17,7 +17,7 @@
 | 安全层 | Spring Security（@WebMvcTest slice 或过滤器直测，Redis/Repo mock） | 端点鉴权矩阵、TokenAuthFilter 白名单/账号状态、会话失效 |
 | 组件联调 | 集成测试直连 `upload-file` | 分片、断点续传、秒传、mergeAsync、Range |
 | 前端单测 | **Vitest** + React Testing Library + jsdom（实际采用 Vitest；非 Jest） | 登录、上传交互、权限渲染、改密、请求封装 |
-| E2E | Playwright（骨架见 `frontend/tests/e2e`，待浏览器/测试库就绪） | 关键全流程 |
+| E2E | Playwright（本机 Chrome，`tests/e2e`；Docker E2E 栈见 `scripts/run-e2e-docker.sh`） | TC-E2E-001~003 全链路/越权 + 强制改密 |
 | 性能 | 压测脚本（待建） | 真分页、并发上传、搜索 |
 
 环境：MySQL 8（`pathfinder_test`，集成/矩阵用例依赖）+ Redis 9（生产必需；自动化矩阵已避免依赖 Redis 实例）；大文件测试数据：1MB、5MB+、200MB、500MB。
@@ -354,6 +354,11 @@
 | `service/LogServiceTest` | AUDIT-001/002/003/009（record/recordLogin/归档 CSV） | 纯单元 |
 | `service/SyncScannerServiceTest` | SYNC-001~015、下载拦截与刷新 | MySQL |
 | `service/FileUploadFlowTest` | UP-001/003(部分)/006/010/011、FILE-009~012(部分)、BATCH-001~006 | MySQL |
+| `service/AuthServiceTest`（captchaEnabled 分支） | LOGIN-002 关闭开关后跳过验证码（E2E 前置） | 纯单元 |
+| `config/DataInitializerTest`（bootstrap 分支） | ORG-014 变体：`ADMIN_BOOTSTRAP_PASSWORD` 固定密码 + 不强制改密 | 纯单元 |
+| E2E `tests/e2e/01-smoke.spec.ts` | 登录页验证码/表单渲染 | Playwright + 本机 Chrome |
+| E2E `tests/e2e/02-full-flow.spec.ts` | TC-E2E-001 全链路（登录/上传/搜索/下载/归属/删除/恢复/审计） | Playwright + Chrome + Docker E2E 栈 |
+| E2E `tests/e2e/03-permission.spec.ts` | TC-E2E-003 越权（USER 菜单收敛 + 管理接口 403）、LOGIN-019/020 强制改密 E2E | Playwright + Chrome + Docker E2E 栈 |
 | 前端 `pages/Login.test.tsx`、`api/client.test.ts` | UI-001/002、401/403/组件错误码映射、会话失效跳转 | Vitest |
 | 前端 `pages/ChangePassword.test.tsx` | 改密页必填/一致性/最小长度/成功回登录/失败提示 | Vitest |
 | 前端 `components/MainLayout.test.tsx` | UI-003 角色菜单（ADMIN/USER/DEPT_ADMIN） | Vitest |
@@ -376,6 +381,14 @@
 | X2 | 停用账号登录口径 | `AuthService` 将 status=0 并入"用户名或密码错误"并累加失败计数，与 PRD F1「账号已停用，请联系管理员」不符 | 产品定口径后固化测试 |
 | X3 | 回收站恢复校验 | `restore` 未校验原部门/存储路径有效性（TSDD 8.2/G7 要求） | 补实现 + TC-FILE-015 物理路径断言 |
 | X4 | 页面组件覆盖 | FileList/Recycle/User/Dept/Log/Storage/ChangePassword/MainLayout/UploadModal/Login 已覆盖；批量归属提交、回收站/用户批量勾选等深层弹窗交互待补 | 追加覆盖（优先级低于 X1~X3） |
-| X5 | E2E（Playwright） | 骨架已建（`frontend/tests/e2e`），验证码阻断全自动登录 | 测试环境提供验证码绕过/种子账号后跑 TC-E2E-001~003 |
+| X5 | E2E（Playwright） | 骨架已建（`frontend/tests/e2e`），验证码阻断全自动登录 | 已解决：新增验证码绕过开关 `CAPTCHA_ENABLED=false` + 种子账号 `ADMIN_BOOTSTRAP_PASSWORD`（仅测试部署开启）；E2E 已启用并通过 `scripts/run-e2e-docker.sh`（独立 pathfinder_test 栈，本机 Chrome 跑 TC-E2E-001/003，跑完恢复原栈） |
 | X6 | 性能与 CI | 无压测脚本；无 `.github` CI 与 JaCoCo/Jest coverage 门禁 | 建 CI（对应 PLAN PF-005）+ 性能脚本后启用 TC-PERF |
-| X7 | 集成测试运行条件 | `@SpringBootTest` 需 MySQL `pathfinder_test` 实例 | 建议 Testcontainers / CI 服务化，本地 `mvn test` 前先就绪 MySQL |
+| X7 | 集成测试运行条件 | `@SpringBootTest` 需 MySQL `pathfinder_test` 实例 | 由 `docker/docker-compose.test.yml`（暴露 3306/6379 并建测试库）满足；本地 `mvn test` 前 `docker compose ... -f docker-compose.test.yml up -d mysql redis` |
+
+### 17.1 本次自动化测试运行结论（2026-09-03）
+
+| 套件 | 命令 | 结果 | 前置 |
+|---|---|---|---|
+| 后端单元/集成 | `cd server && mvn test` | 132 通过 / 0 失败 | `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.test.yml up -d mysql redis`（宿主机连 3306 pathfinder_test） |
+| 前端单测 | `cd frontend && npm test` | 67 通过 / 0 失败 | 无 |
+| E2E（本机 Chrome） | `bash scripts/run-e2e-docker.sh` | 3 通过（01-smoke / 02-full-flow / 03-permission） | Docker E2E 栈（pathfinder_test + 验证码绕过 + 种子账号），跑完自动恢复原栈 |

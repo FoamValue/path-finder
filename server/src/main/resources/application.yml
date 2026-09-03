@@ -36,6 +36,10 @@ pathfinder:
     session-timeout: 30m
     login-max-fail: 5
     login-lock-minutes: 10
+    # 验证码开关（仅测试环境置 false，生产必须保持 true）
+    captcha-enabled: ${CAPTCHA_ENABLED:true}
+    # 空库 Seed 时给首个 admin 使用的固定密码（配置后不强制改密）；默认用 Init@123 并强制改密
+    bootstrap-admin-password: ${ADMIN_BOOTSTRAP_PASSWORD:}
   sync:
     enabled: ${SYNC_ENABLED:true}
     watch-dir: ${SYNC_WATCH_DIR:./data/import}
