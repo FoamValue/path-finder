@@ -148,7 +148,10 @@ public class DeptService {
     }
 
     public Dept get(Long id) {
-        return deptRepository.findById(id).orElseThrow(() -> BizException.notFound("部门不存在"));
+        // 软删除部门视为不存在（G7/X3：目标部门已删除时不回退到残留实体）
+        return deptRepository.findById(id)
+                .filter(d -> d.getDelFlag() == null || d.getDelFlag() == 0)
+                .orElseThrow(() -> BizException.notFound("部门不存在"));
     }
 
     /**

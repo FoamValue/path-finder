@@ -12,6 +12,8 @@ import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.security.AuthUser;
 import cn.chenxinjie.pathfinder.util.PathUtil;
 import cn.chenxinjie.pathfinder.util.RedisTtlPolicy;
+import cn.chenxinjie.uploadfile.core.model.UploadTask;
+import cn.chenxinjie.uploadfile.core.service.ResumableUploadService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -34,6 +36,7 @@ import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.zip.ZipEntry;
@@ -57,6 +60,7 @@ public class FileService {
     private final LogService logService;
     private final ObjectMapper objectMapper;
     private final UserRepository userRepository;
+    private final ResumableUploadService uploadService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileRecycleBinRepository recycleBinRepository,
@@ -65,7 +69,8 @@ public class FileService {
                        RedisTtlPolicy ttl,
                        LogService logService,
                        ObjectMapper objectMapper,
-                       UserRepository userRepository) {
+                       UserRepository userRepository,
+                       ResumableUploadService uploadService) {
         this.fileInfoRepository = fileInfoRepository;
         this.recycleBinRepository = recycleBinRepository;
         this.deptService = deptService;
@@ -74,6 +79,7 @@ public class FileService {
         this.logService = logService;
         this.objectMapper = objectMapper;
         this.userRepository = userRepository;
+        this.uploadService = uploadService;
     }
 
     @Data
@@ -258,7 +264,8 @@ public class FileService {
     }
 
     /**
-     * 合并确认：按组件产物路径规则定位合并文件 → 迁移至统一存储 → 回填 MD5 → READY（TSDD 6.3）。
+     * 合并确认：按组件 rc.4 稳定读接口 getTask().finalPath 定位合并产物 → 迁移至统一存储 →
+     * 回填 MD5 → READY；入库后调用 cancelUpload 显式回收组件侧任务/残留（TSDD 6.3 / G3 冻结方案）。
      */
     @Transactional
     public void confirm(Long fileId, AuthUser user) {
@@ -269,9 +276,9 @@ public class FileService {
         if ("READY".equals(f.getStatus())) {
             return;
         }
-        Path merged = resolveMergedPath(f.getUploadIdentifier(), f.getOriginalName());
-        if (!Files.exists(merged)) {
-            throw BizException.badRequest("合并产物不存在，请确认已合并完成（mergeStatus=SUCCEEDED）");
+        Path merged = resolveMergedProduct(f);
+        if (merged == null || !Files.exists(merged) || Files.isDirectory(merged)) {
+            throw BizException.badRequest("合并产物不存在，请确认已合并完成（mergeStatus=SUCCEEDED）后重试");
         }
         String rel = PathUtil.relativeStorePath(f.getOriginalName());
         Path target = PathUtil.resolve(pathProperties.getStorage().rootPath(), rel);
@@ -290,7 +297,49 @@ public class FileService {
         f.setDiskStatus("READY");
         f.setDiskModifiedAt(diskModifiedAt(target));
         fileInfoRepository.save(f);
+        cleanupUploadTask(f.getUploadIdentifier());
         logService.record(user, "UPLOAD", "FILE", String.valueOf(fileId), f.getOriginalName(), "上传完成", true);
+    }
+
+    /**
+     * 合并产物定位（rc.4）：优先使用组件任务元数据的 finalPath（稳定读接口 getTask），
+     * 元数据不可达时回退到旧版目录约定，兼容历史未清理任务。
+     */
+    private Path resolveMergedProduct(FileInfo f) {
+        String identifier = f.getUploadIdentifier();
+        if (identifier != null) {
+            Optional<UploadTask> task = uploadService.getTask(identifier);
+            if (task.isPresent() && task.get().getFinalPath() != null && !task.get().getFinalPath().isBlank()) {
+                Path p = Path.of(task.get().getFinalPath());
+                if (Files.exists(p)) {
+                    return p;
+                }
+            }
+        }
+        return legacyMergedPath(identifier, f.getOriginalName());
+    }
+
+    private Path legacyMergedPath(String identifier, String originalName) {
+        if (identifier == null) {
+            return null;
+        }
+        Path p = pathProperties.getStorage().uploadPath().resolve("files")
+                .resolve(identifier).resolve(originalName);
+        return Files.exists(p) ? p : null;
+    }
+
+    /**
+     * confirm 入库后显式回收组件任务：删除任务元数据与 identifier 目录残留（分片已由合并清理）。
+     */
+    private void cleanupUploadTask(String identifier) {
+        if (identifier == null) {
+            return;
+        }
+        try {
+            uploadService.cancelUpload(identifier);
+        } catch (Exception e) {
+            log.warn("confirm 后清理上传任务失败 identifier={}（交由 TTL/调度兜底）", identifier, e);
+        }
     }
 
     private LocalDateTime diskModifiedAt(Path p) {
@@ -299,11 +348,6 @@ public class FileService {
         } catch (IOException e) {
             return LocalDateTime.now();
         }
-    }
-
-    private Path resolveMergedPath(String identifier, String originalName) {
-        return pathProperties.getStorage().uploadPath().resolve("files")
-                .resolve(identifier).resolve(originalName);
     }
 
     private String md5(Path p) {
@@ -492,16 +536,25 @@ public class FileService {
         if (!canOperate(f, user)) {
             throw BizException.forbidden("无权恢复该文件");
         }
+        // X3（TSDD 8.2 / G7）：恢复前置校验——原归属部门/空间仍有效
+        if ("DEPT".equals(f.getSpaceType()) && f.getDeptId() != null) {
+            try {
+                deptService.get(f.getDeptId());
+            } catch (BizException ex) {
+                throw BizException.badRequest("原归属部门已删除，无法恢复该文件");
+            }
+        }
         // del/ → files/ 迁回
         Path del = pathProperties.getStorage().delPath().resolve(f.getStoragePath());
         Path target = PathUtil.resolve(pathProperties.getStorage().rootPath(), f.getStoragePath());
-        if (Files.exists(del)) {
-            try {
-                Files.createDirectories(target.getParent());
-                Files.move(del, target, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                throw BizException.badRequest("恢复文件失败");
-            }
+        if (!Files.exists(del)) {
+            throw BizException.badRequest("回收站物理文件已被清理，无法恢复该文件");
+        }
+        try {
+            Files.createDirectories(target.getParent());
+            Files.move(del, target, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            throw BizException.badRequest("恢复文件失败");
         }
         f.setDelFlag(0);
         f.setDelAt(null);

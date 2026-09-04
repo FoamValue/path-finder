@@ -110,3 +110,17 @@
 | G11 | ✅ 已修复 | TSDD 5.2（密钥文件持久化 + 每次渲染拉取公钥）；TESTCASES TC-LOGIN-025、TC-DEP-003 |
 | G12 | ✅ 已修复 | TSDD 5.3 账号生命周期处置规则；PLAN PF-109；TESTCASES TC-ORG-015/016 |
 | G13~G15 | ⏳ 延后 v1.1 | 保留为 P2 跟踪项 |
+
+---
+
+## 六、已知缺口收口（TESTCASES §17 X1~X3，2026-09-04）
+
+TESTCASES §17 中「影响全绿的验收项」X1/X2/X3 已实现并关闭：
+
+| 编号 | 状态 | 收口内容 | 验证 |
+|---|---|---|---|
+| X1 越权审计留痕 | ✅ 已修复 | `GlobalExceptionHandler` 对 403 三类出口（`BizException(403)`/Spring `AccessDeniedException`/组件 `AccessDeniedException`）统一写 `LogService.record(FORBIDDEN, targetType=API, success=0)`；LogService 可选注入、审计失败不掩盖响应 | `GlobalExceptionAuditTest`（403→`record(...,false)`、非 403 不审计、审计异常不阻断）；启用 AUDIT-007 |
+| X2 停用账号登录口径 | ✅ 已修复 | `AuthService.login` 对 `status=0` 单列分支：403「账号已停用，请联系管理员」、`recordLogin(false)`，不累加失败计数、不触发锁定（原并入密码错误并计数的缺陷消除） | `AuthServiceTest.disabledAccount_rejectedWithSpecificMessage_notCounted` |
+| X3 回收站恢复校验 | ✅ 已修复 | `FileService.restore` 前置校验：DEPT 归属部门必须有效 + `del/` 物理文件必须存在；`DeptService.get` 同步忽略软删除部门（目标部门视为不存在） | `FileUploadFlowTest.restore_whenDeptDeleted_fails` / `restore_whenDelFileMissing_fails` + TC-FILE-015 |
+
+仍开放：X4（前端深层交互）、X6（性能与 CI），转后续迭代。后端自动化用例 139 → 147，全绿。

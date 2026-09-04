@@ -1,5 +1,6 @@
 package cn.chenxinjie.pathfinder.controller;
 
+import cn.chenxinjie.pathfinder.service.BizException;
 import cn.chenxinjie.uploadfile.core.model.ChunkUploadRequest;
 import cn.chenxinjie.uploadfile.core.model.MergeStatus;
 import cn.chenxinjie.uploadfile.core.model.UploadProgress;
@@ -13,10 +14,11 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
+import java.util.Map;
 
 /**
  * 大文件分片上传端点（自定义实现组件契约，前端协议与组件 README 一致）。
- * POST /upload（multipart file + 7 参数；或 action=merge/mergeAsync）、GET /upload（progress/mergeStatus）。
+ * POST /upload（multipart file + 7 参数；或 action=merge/mergeAsync/cancel）、GET /upload（progress/mergeStatus）。
  */
 @RestController
 public class UploadController {
@@ -44,8 +46,13 @@ public class UploadController {
         if ("mergeAsync".equals(action)) {
             return uploadService.submitMerge(identifier);
         }
+        if ("cancel".equals(action)) {
+            // rc.4 显式取消：删除任务 + 分片 + 未入库合并产物
+            boolean canceled = uploadService.cancelUpload(identifier);
+            return Map.of("canceled", canceled);
+        }
         if (file == null) {
-            throw new IllegalArgumentException("缺少文件分片");
+            throw BizException.badRequest("缺少文件分片");
         }
         ChunkUploadRequest req = new ChunkUploadRequest();
         req.setIdentifier(identifier);
@@ -66,7 +73,7 @@ public class UploadController {
         return switch (action) {
             case "progress" -> uploadService.getProgress(identifier);
             case "mergeStatus" -> uploadService.getMergeStatus(identifier);
-            default -> throw new IllegalArgumentException("不支持的 action: " + action);
+            default -> throw BizException.badRequest("不支持的 action: " + action);
         };
     }
 }

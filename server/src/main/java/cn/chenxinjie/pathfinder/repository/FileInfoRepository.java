@@ -8,12 +8,15 @@ import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 public interface FileInfoRepository extends JpaRepository<FileInfo, Long>, JpaSpecificationExecutor<FileInfo> {
 
     long countByDelFlagAndStatusAndCreatedAtBefore(Integer delFlag, String status, LocalDateTime before);
 
     List<FileInfo> findByDelFlagAndStatusAndCreatedAtBefore(Integer delFlag, String status, LocalDateTime before);
+
+    Optional<FileInfo> findFirstByUploadIdentifierAndDelFlag(String uploadIdentifier, Integer delFlag);
 
     long countByDelFlagAndDeptId(Integer delFlag, Long deptId);
 

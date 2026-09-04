@@ -46,16 +46,17 @@
         </dependency>
 
         <!-- 大文件分片上传/断点续传组件（core 纯 Java 手动装配；starter 依赖 javax.servlet 与
-             Spring Boot 4/jakarta 不兼容，按 TSDD 11 风险预案降级为 core 手动装配，接口契约不变） -->
+             Spring Boot 4/jakarta 不兼容，按 TSDD 11 风险预案降级为 core 手动装配，接口契约不变）
+             rc.4：confirm 经 getTask().finalPath 定位产物、cancelUpload 显式清理、UploadErrorCode 稳定错误语义 -->
         <dependency>
             <groupId>cn.chenxinjie</groupId>
             <artifactId>upload-file-core</artifactId>
-            <version>1.0.0-rc.3</version>
+            <version>1.0.0-rc.4</version>
         </dependency>
         <dependency>
             <groupId>cn.chenxinjie</groupId>
             <artifactId>upload-file-store-redis</artifactId>
-            <version>1.0.0-rc.3</version>
+            <version>1.0.0-rc.4</version>
         </dependency>
 
         <!-- 数据库 -->
@@ -113,6 +114,10 @@
                             <version>1.18.46</version>
                         </path>
                     </annotationProcessorPaths>
+                    <compilerArgs>
+                        <!-- JDK 23+ javac 默认关闭隐式注解处理，显式开启以保证 Lombok 生效 -->
+                        <arg>-proc:full</arg>
+                    </compilerArgs>
                 </configuration>
             </plugin>
         </plugins>

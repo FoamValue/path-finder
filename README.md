@@ -7,7 +7,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 ## 功能特性
 
 - 🔐 **安全登录**：图片验证码 + 前端 RSA 加密传输密码 + BCrypt 存储；连续失败 5 次锁定 10 分钟；多登录踢出（单会话）；会话超时自动登出；首次登录强制改密
-- 📂 **大文件传输**：基于 `cn.chenxinjie:upload-file:1.0.0-rc.3` 分片上传 / 断点续传 / 秒传 / 分片 MD5 校验 / 异步合并 / Range 断点下载
+- 📂 **大文件传输**：基于 `cn.chenxinjie:upload-file:1.0.0-rc.4` 分片上传 / 断点续传 / 秒传 / 分片 MD5 校验 / 异步合并 / Range 断点下载
 - 🗂 **数据权限**：个人空间 / 部门空间 / 公共空间三级归属，部门树可见性继承，服务端强制过滤
 - 🔍 **高效检索**：后端真分页（数据库层 `LIMIT/OFFSET`），文件名模糊搜索
 - ♻️ **软删除**：回收站保留 30 天，支持恢复与物理清除
@@ -24,7 +24,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 | 后端 | JDK 26 · Spring Boot 4.1.1 · Spring Security · Spring Data JPA · Jackson 3 |
 | 缓存 | Redis 9（会话 / 验证码 / 锁定 / 元数据缓存，TTL 固定基础值 + 随机抖动防雪崩） |
 | 数据库 | MySQL 8 |
-| 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.3`（core 手动装配，接口契约与组件一致） |
+| 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.4`（core 手动装配：confirm 经 `getTask().finalPath` 定位合并产物、入库后 `cancelUpload` 显式回收、任务级归属 `AccessControl`、`StorageCleanupService` 定时回收、全局配额 `quota.max-bytes` 可选） |
 | 部署 | Docker Compose · nginx:alpine · TLS |
 
 ## 目录结构
@@ -101,6 +101,7 @@ npm run dev
 | `SYNC_INTERVAL` | `5m` | 同步扫描间隔（如 `5m` / `1h`） |
 | `SYNC_SKIP_RECENT_SECONDS` | 30 | 跳过最近 N 秒内写入的文件（防半写） |
 | `SYNC_DEDUP_BY_MD5` | true | 导入时按 MD5 去重 |
+| `UPLOAD_QUOTA_MAX_BYTES` | 0（关闭） | upload-file 组件全局容量配额（字节），超限上传返回 507 |
 
 ### 存储根目录
 
@@ -172,10 +173,11 @@ E2E 覆盖：登录页冒烟、TC-E2E-001 全链路（上传/搜索/下载/归�
 | [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | 敏捷迭代计划（Sprint / 任务卡 / DoD） |
 | [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | 测试用例（110+，含数据权限矩阵） |
 | [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | 生产上线基准审查与修订记录 |
+| [CHANGELOG](CHANGELOG.md) | 变更记录（含 `upload-file` rc.3 → rc.4 升级条目） |
 
 ## 已知说明
 
-- 大文件组件 `upload-file-spring-boot-starter` 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容，故采用组件 `upload-file-core` 手动装配（TSDD §11 风险预案），对外接口契约不变。
+- 大文件组件 `upload-file-spring-boot-starter` 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容，故采用组件 `upload-file-core` 手动装配（TSDD §11 风险预案，`1.0.0-rc.4`），对外接口契约不变。
 - v1.0.0 为单机部署形态（PRD 明确非目标），多实例与在线预览/全文检索见版本规划。
 
 ## License

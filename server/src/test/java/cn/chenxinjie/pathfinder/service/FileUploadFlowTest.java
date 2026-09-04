@@ -3,9 +3,13 @@ package cn.chenxinjie.pathfinder.service;
 import cn.chenxinjie.uploadfile.core.model.ChunkUploadRequest;
 import cn.chenxinjie.uploadfile.core.model.MergeStatus;
 import cn.chenxinjie.uploadfile.core.service.ResumableUploadService;
+import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.dto.PageResult;
+import cn.chenxinjie.pathfinder.entity.Dept;
+import cn.chenxinjie.pathfinder.entity.FileInfo;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
+import cn.chenxinjie.pathfinder.repository.FileInfoRepository;
 import cn.chenxinjie.pathfinder.repository.RoleRepository;
 import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.repository.UserRoleRepository;
@@ -22,6 +26,8 @@ import org.springframework.test.context.ActiveProfiles;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -57,6 +63,15 @@ class FileUploadFlowTest {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
+    @Autowired
+    private DeptService deptService;
+
+    @Autowired
+    private FileInfoRepository fileInfoRepository;
+
+    @Autowired
+    private PathProperties pathProperties;
 
     private AuthUser admin;
 
@@ -112,6 +127,28 @@ class FileUploadFlowTest {
         PageResult<FileService.FileVo> page = fileService.page(admin, null, null, null, 1, 20);
         assertTrue(page.getList().stream().anyMatch(v -> v.getId().equals(ticket.getFileId())),
                 "多分片 confirm 后文件应出现在列表中");
+    }
+
+    @Test
+    void confirm_usesFinalPathAndReclaimsComponentTask() {
+        // rc.4：confirm 经 getTask().finalPath 定位合并产物，入库后 cancelUpload 显式回收任务
+        String name = "finalpath.txt";
+        byte[] data = "final-path-resolution".getBytes(StandardCharsets.UTF_8);
+        FileService.UploadTicket ticket = fileService.uploadTicket(name, (long) data.length, "PUBLIC", null, admin);
+
+        uploadChunk(name, ticket, data, 0, 1);
+        mergeAndWaitSucceeded(ticket.getIdentifier());
+
+        var task = uploadService.getTask(ticket.getIdentifier());
+        assertTrue(task.isPresent() && task.get().getFinalPath() != null
+                        && Files.isRegularFile(Path.of(task.get().getFinalPath())),
+                "合并后组件任务应存在且 finalPath 指向真实产物文件");
+
+        fileService.confirm(ticket.getFileId(), admin);
+
+        assertTrue(uploadService.getTask(ticket.getIdentifier()).isEmpty(),
+                "confirm 后组件任务应被 cancelUpload 显式清理（防孤儿残留）");
+        assertEquals("READY", fileService.getFile(ticket.getFileId()).getStatus());
     }
 
     @Test
@@ -201,6 +238,42 @@ class FileUploadFlowTest {
         AuthUser viewer = createUser("viewer3", "VIEWER");
         assertThrows(BizException.class, () -> fileService.restore(fid, viewer),
                 "非归属人/非管理员/非部门管理员不得恢复部门空间文件");
+    }
+
+    @Test
+    void restore_whenDeptDeleted_fails() {
+        // X3（G7）：原归属部门已删除 → 拒绝恢复并给出明确提示
+        DeptService.DeptForm form = new DeptService.DeptForm();
+        form.setName("回收临时部-" + System.nanoTime());
+        form.setParentId(1L);
+        Dept dept = deptService.create(form);
+        Long deptId = dept.getId();
+
+        byte[] data = "dept-deleted-restore".getBytes(StandardCharsets.UTF_8);
+        FileService.UploadTicket ticket = fileService.uploadTicket("dept.txt", (long) data.length, "DEPT", deptId, admin);
+        uploadChunk("dept.txt", ticket, data, 0, 1);
+        mergeAndWaitSucceeded(ticket.getIdentifier());
+        fileService.confirm(ticket.getFileId(), admin);
+        fileService.softDelete(ticket.getFileId(), admin);
+
+        deptService.delete(deptId);
+        BizException e = assertThrows(BizException.class, () -> fileService.restore(ticket.getFileId(), admin));
+        assertTrue(e.getMessage().contains("部门"), "部门已删除时应拒绝恢复，实际: " + e.getMessage());
+    }
+
+    @Test
+    void restore_whenDelFileMissing_fails() {
+        // X3（G7）：del/ 物理文件已被清理（缺失）→ 拒绝恢复，不静默置 READY
+        Long fid = uploadAndDelete("delgone.txt", "del-file-gone");
+        FileInfo fi = fileInfoRepository.findById(fid).orElseThrow();
+        Path del = pathProperties.getStorage().delPath().resolve(fi.getStoragePath());
+        try {
+            Files.deleteIfExists(del);
+        } catch (java.io.IOException ex) {
+            throw new AssertionError("删除 del 物理文件失败", ex);
+        }
+        BizException e = assertThrows(BizException.class, () -> fileService.restore(fid, admin));
+        assertTrue(e.getMessage().contains("清理"), "物理文件缺失时应拒绝恢复，实际: " + e.getMessage());
     }
 
     @Test

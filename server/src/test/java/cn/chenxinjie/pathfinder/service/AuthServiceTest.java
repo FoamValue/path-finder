@@ -151,6 +151,26 @@ class AuthServiceTest {
     }
 
     @Test
+    void disabledAccount_rejectedWithSpecificMessage_notCounted() {
+        // X2：停用账号与「密码错误」区分口径，不计失败、不触发锁定
+        User dis = new User();
+        dis.setId(99L);
+        dis.setUsername("disabled1");
+        dis.setPassword("$2a$x");
+        dis.setStatus(0);
+        when(userRepository.findByUsernameAndDelFlag(eq("disabled1"), eq(0))).thenReturn(java.util.Optional.of(dis));
+
+        BizException e = assertThrows(BizException.class,
+                () -> authService.login("disabled1", "enc", "u", "CODE", "127.0.0.1", "test"));
+        assertEquals(403, e.getStatus());
+        assertTrue(e.getMessage().contains("停用"), "文案应为 PRD 口径：账号已停用，请联系管理员");
+        org.mockito.Mockito.verify(ttl, org.mockito.Mockito.never()).increment(anyString(),
+                org.mockito.ArgumentMatchers.anyLong());
+        org.mockito.Mockito.verify(logService)
+                .recordLogin(eq(99L), eq("disabled1"), anyString(), anyString(), eq(false), eq("账号已停用"));
+    }
+
+    @Test
     void loginSuccess_clearsFailCounter_andAuditsSuccess() {
         when(passwordEncoder.matches(anyString(), anyString())).thenReturn(true);
         when(ttl.get("auth:fail:admin")).thenReturn(null);

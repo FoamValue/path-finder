@@ -51,7 +51,7 @@
 | PF-001 | 后端 Maven 骨架（Spring Boot 4.1.1，JDK 26），集成 Security/JPA/Redis；`BaseEntity`、全局异常、统一响应 | 1d | `mvn spring-boot:run` 启动；健康检查通过 |
 | PF-002 | 前端脚手架（Ant Design Pro / UmiJS + TS strict），路由 + `access.ts` 骨架，登录页占位 | 1d | `npm run dev` 可访问 |
 | PF-003 | 数据库初始化：PRD/TSDD 全部 DDL + Flyway（含 `V2__seed.sql`：四角色、根部门、首个 `admin` 账号，初始密码首登强制改密，见 TSDD 3.4） | 0.5d | 建表脚本在 MySQL 8 可执行；Seed 后 `admin` 可登录且强制改密 |
-| PF-004 | **组件 POC**：引入 `cn.chenxinjie:upload-file:1.0.0-rc.3`（starter + store-redis），验证 `/upload /download` 与 Spring Boot 4.1.1 / Redis 9 / JDK 26 兼容 | 2d | 分片上传/断点续传/Range 下载 POC 通过；产出集成结论；失败则给出降级方案（TSDD 11） |
+| PF-004 | **组件 POC**：引入 `cn.chenxinjie:upload-file:1.0.0-rc.4`（starter + store-redis），验证 `/upload /download` 与 Spring Boot 4.1.1 / Redis 9 / JDK 26 兼容 | 2d | 分片上传/断点续传/Range 下载 POC 通过；产出集成结论；失败则给出降级方案（TSDD 11） |
 | PF-005 | CI 流水线：`main` 分支 PR 触发 build + test + 覆盖率门禁（JaCoCo/Jest）+ Checkstyle/ESLint | 1d | PR 自动运行且门禁生效 |
 
 **Sprint 0 评审点**：组件兼容性结论（Go/No-Go 或降级方案）；骨架可运行。
@@ -146,8 +146,25 @@
 
 | 依赖 | 提供方 | 就绪点 |
 |---|---|---|
-| `cn.chenxinjie:upload-file:1.0.0-rc.3` 本地 mvn 仓库 | 组件仓库 | S0 前（已就绪） |
+| `cn.chenxinjie:upload-file:1.0.0-rc.4` 本地 mvn 仓库（`upload-file-core` + `upload-file-store-redis`，随组件仓库同版本推进） | 组件仓库 | S0 前（已就绪）；rc.4 升级补丁见 §12 |
 | 组件集成结论 | PF-004 | S0 末 |
 | 权限矩阵冻结 | 评审 | S1 末 |
 | 数据 DDL | PF-003 | S0 末 |
 | 测试环境（MySQL/Redis/Docker） | 运维 | S1 前 |
+
+---
+
+## 12. 追加：组件 rc.4 升级补丁（v1.0.0 基线之上，2026-09）
+
+> 背景：组件仓库已推进至 `1.0.0-rc.4`（新增 `getTask` 稳定读、`cancelUpload` 显式取消、`UploadErrorCode` 稳定错误语义，相对 rc.3 **只增不删**），而业务工程长期锁在 `1.0.0-rc.3`、从未试点（见 `docs/DEV-JOURNEY-REFLECTION.md` 盲点 1）。本补丁把该「自我升级滞后」闭环：依赖升级 → confirm 改用 rc.4 契约 → 显式回收 → 稳定错误码 → 回归。对应提交随本计划文档同期合入。
+
+| 任务 | 内容 | 关联 | 状态 |
+|---|---|---|---|
+| PF-501 | 依赖升级：`server/pom.xml` 中 `upload-file-core` / `upload-file-store-redis` `1.0.0-rc.3 → 1.0.0-rc.4`（JDK 23+ javac 需显式 `-proc:full` 保证 Lombok 生效） | TSDD §6.1 / README | 已完成 |
+| PF-502 | confirm 产物定位改用 rc.4 `getTask(identifier)` 的 `finalPath`（`FileService.resolveMergedProduct`），兼容旧版目录约定回退 | TSDD §6.3（G3） | 已完成 |
+| PF-503 | confirm 入库成功后调用 `cancelUpload(identifier)` 显式回收任务/残留（`FileService.cleanupUploadTask`；异步合并 PENDING/RUNNING 期抛 409，等结束后重试） | TSDD §6.3 / §8.2 | 已完成 |
+| PF-504 | `UploadController` 新增 `POST /upload?action=cancel`（返回 `{canceled}`）；缺失分片/非法 action 改由 `BizException.badRequest` 明确返回 400 | PRD F8 / TSDD §4.7 | 已完成 |
+| PF-505 | `GlobalExceptionHandler` 按 rc.4 `UploadErrorCode` 注册稳定映射：400（参数/校验）/ 404（任务不存在）/ 409（合并中）/ 507（配额），不透传内部细节 | TSDD §9.3 | 已完成 |
+| PF-506 | 回归：`FileUploadFlowTest` 增补 confirm/取消用例；新增 `UploadFileErrorMappingTest`（类型化异常 → HTTP 状态码）；E2E 全链路复跑 | TESTCASES / §9 测试策略 | 已完成 |
+
+**验收标准**：`mvn test` 全绿；上传 → 合并 → confirm → 下载主链路无回归；中断/取消后任务可复用同 identifier 重传；全仓库文档无 `1.0.0-rc.3` 残留引用。

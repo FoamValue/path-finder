@@ -4,6 +4,12 @@ spring:
     driver-class-name: com.mysql.cj.jdbc.Driver
     username: ${MYSQL_USER:pathfinder}
     password: ${MYSQL_PASSWORD:pathfinder123}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:pathfinder123}   # 与 docker-compose 默认 requirepass 一致
+      timeout: 3s
   jpa:
     hibernate:
       ddl-auto: create-drop

@@ -18,7 +18,7 @@
 ### 1.2 设计原则
 
 1. **分层清晰**：Controller → Service → Repository 严格分层，禁止跨层调用。
-2. **贴合组件**：大文件分片上传/断点续传/Range 下载一律复用 `cn.chenxinjie:upload-file:1.0.0-rc.3`，不重复造轮子。
+2. **贴合组件**：大文件分片上传/断点续传/Range 下载一律复用 `cn.chenxinjie:upload-file:1.0.0-rc.4`，不重复造轮子。
 3. **数据权限前置**：所有文件接口统一走"可见性过滤"，服务端强制校验，前端仅做展示层。
 4. **安全纵深**：验证码 → 传输加密 → 凭证校验 → 失败锁定 → 单会话踢出 → 越权拦截。
 5. **可观测性**：关键操作全量审计落库。
@@ -294,18 +294,19 @@ CREATE TABLE file_recycle_bin (
 
 | GET | `/api/storage/info` | 总容量/已用/剩余/使用率 |
 
-### 4.7 大文件传输组件端点（由 `upload-file` 提供，PathFinder 会话鉴权前置）
+### 4.7 大文件传输上传端点（PathFinder `UploadController` 按组件契约实现，会话鉴权前置）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| POST | `/upload` | 上传分片（见 PRD F8 契约，业务上传唯一入口） |
-| GET | `/upload?action=progress` | 查询进度 |
-| POST | `/upload?action=merge` | 合并 |
-| POST | `/upload?action=mergeAsync` | 异步合并（202） |
-| GET | `/upload?action=mergeStatus` | 异步合并状态 |
-| GET | `/download?identifier=xxx` | 组件下载端点：**仅用于未入库临时文件/联调兜底，v1.0 不承载业务下载**（业务下载见 4.4 `/api/file/download/{token}`） |
+| POST | `/upload` | 上传 1 个分片（multipart `file` + `identifier/fileName/fileSize/chunkSize/chunkTotal/chunkIndex/chunkMd5`，见 PRD F8 契约，业务上传唯一入口） |
+| GET | `/upload?action=progress&identifier=` | 查询进度（断点续传/秒传据此跳过已传分片） |
+| POST | `/upload?action=merge&identifier=` | 合并（同步） |
+| POST | `/upload?action=mergeAsync&identifier=` | 异步合并（202） |
+| GET | `/upload?action=mergeStatus&identifier=` | 异步合并状态（NONE/PENDING/RUNNING/SUCCEEDED/FAILED） |
+| POST | `/upload?action=cancel&identifier=` | 取消任务并回收分片/未入库合并产物（**rc.4**；confirm 入库后由服务端显式调用，见 §6.3） |
+| GET | `/download?identifier=xxx` | 组件契约下载端点（starter/servlet 装配时由组件注册；**core 手工装配下本工程未暴露**）：仅用于未入库临时文件/联调兜底，v1.0 不承载业务下载（业务下载见 4.4 `/api/file/download/{token}`） |
 
-> 鉴权策略：Spring Security 放行登录相关端点，`/upload` 必须携带 PathFinder 会话 Token，由自定义 `UploadAuthFilter` 校验后放行至组件 Servlet；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。
+> 鉴权策略：`/api/**`、`/upload` 纳入 Spring Security 会话鉴权矩阵（见 §5.1）；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。`/upload` 各 action 由 `UploadController` 基于 `upload-file-core` 手工装配实现（见 §6.1/§11），前端协议与组件 README 完全一致；组件 `AccessControl` 注入归属校验（`UploadOwnerAccessControl`）：所有 action 仅允许该 `file_info.upload_identifier` 的归属人（creator）或 ADMIN 操作，拿到 identifier 无法越权 merge/cancel 他人任务（§9.3 → 403）。
 
 ---
 
@@ -373,18 +374,24 @@ Request → Spring Security FilterChain
 
 ### 6.1 依赖
 
+**v1.0.0 实际坐标（rc.4）**：starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容（见 §11 风险预案与 README「已知说明」），故生产代码不引 starter，改为 **`upload-file-core` 手动装配 + `upload-file-store-redis`**，对外 HTTP 契约与组件完全一致：
+
 ```xml
 <dependency>
   <groupId>cn.chenxinjie</groupId>
-  <artifactId>upload-file-spring-boot-starter</artifactId>
-  <version>1.0.0-rc.3</version>
+  <artifactId>upload-file-core</artifactId>
+  <version>1.0.0-rc.4</version>
 </dependency>
 <dependency>
   <groupId>cn.chenxinjie</groupId>
   <artifactId>upload-file-store-redis</artifactId>
-  <version>1.0.0-rc.3</version>
+  <version>1.0.0-rc.4</version>
 </dependency>
 ```
+
+> **rc.4 相对 rc.3 只增不删**，本系统落地采用的增量契约：`getTask(identifier)` 稳定读（confirm 经 `UploadTask.finalPath` 定位合并产物）、`cancelUpload(identifier)` 显式取消/回收、`UploadErrorCode` 稳定错误语义（§9.3）。原 rc.3 调用用法无需改动。
+>
+> **组件能力复用清单（core 手工装配下仍可用的组件级能力）**：`AccessControl` SPI（任务级归属授权，替代 PermitAll，见 §4.7/§5）、`StorageCleanupService`（过期任务 + 孤儿分片/合并目录回收，见 §6.2/§8.2）、`setMaxTotalBytes` 全局容量配额（`quota.max-bytes`，超限 507）、`ResumableDownloadService`/`DownloadRange`（下载语义，本工程 Range 断点下载自行承载，见 §6.4）。
 
 ### 6.2 配置（`application.yml`）
 
@@ -401,6 +408,8 @@ upload-file:
   max-chunk-size: 5242880                       # 5MB
   max-file-size: 524288000                      # 500MB
   max-request-size: 10485760
+  quota:
+    max-bytes: 0                                # 全局容量配额，0=关闭；超限 507（组件估算：进行中声明大小+已合并产物）
   async-merge:
     enabled: true
     thread-pool-size: 2
@@ -410,10 +419,12 @@ upload-file:
     interval: 1h
     task-ttl: 24h
     orphan-enabled: true
-    use-redis-lock: true
+    use-redis-lock: true                        # 多实例部署启用；单实例不使用
   security:
-    enabled: false                              # 由 PathFinder 会话鉴权替代共享令牌
+    enabled: false                              # 由 PathFinder 会话鉴权 + AccessControl 归属授权替代共享令牌
 ```
+
+> **手工装配落地说明（rc.4）**：`UploadFileConfig` 以 `@Value` 程序化读取 `storage-dir`、`metadata-store`（redis/memory/file）、`redis.*`、`verify-checksum`、`max-chunk-size`、`max-file-size`、`quota.max-bytes`、`merge.fsync`/`merge.atomic`，并据此接线组件 `StorageCleanupService`（消费 `cleanup.enabled/run-on-startup/interval/task-ttl/orphan-enabled`，与上传共用 `IdentifierLock`，见 §8.2）。以下键为 starter 专属，core 手工装配下**不消费**：`async-merge.enabled`（线程池在 `UploadFileConfig` 固定 2 线程）、`max-request-size`、`security.*`（鉴权由 Spring Security + 归属 AccessControl 承担）、`cleanup.use-redis-lock`（单实例部署）。
 
 ### 6.3 上传流程时序（对应 F3/F8）
 
@@ -429,9 +440,11 @@ upload-file:
   │  GET /upload?action=mergeStatus (轮询至 SUCCEEDED)
   │  POST /api/file/{id}/confirm
   │ ────────────────────────▶ 移动合并产物→统一存储；回填 MD5/路径；status=READY；记录审计
+  │  入库成功后 cancelUpload(identifier)
+  │ ────────────────────────▶ 删除任务记录 + 分片 + 残留（rc.4 显式回收；PENDING/RUNNING 期 409，等结束后重试）
 ```
 
-**confirm 阶段合并产物定位（G3，冻结方案）**：`/confirm` 在后端注入组件核心服务 `ResumableUploadService`，按 `file_info.upload_identifier` 调用 `getProgress(identifier)` 获取任务元数据，从中解析合并产物绝对路径（组件 `UploadResult`/任务元数据含最终文件路径）；产物位于 `upload-file.storage-dir` 任务目录下，与 PathFinder 统一存储同盘，故 `Files.move` 为同盘原子移动。若元数据不可达（如 Redis 清理），返回明确错误并要求客户端重新触发 `mergeAsync` 后重试 confirm。
+**confirm 阶段合并产物定位（G3，rc.4 冻结方案）**：`/confirm` 在后端注入组件核心服务 `ResumableUploadService`，按 `file_info.upload_identifier` 调用 rc.4 稳定读接口 `getTask(identifier)`，取其 `UploadTask.finalPath` 定位合并产物绝对路径（组件元数据不可达时回退旧版目录约定）；产物位于 `upload-file.storage-dir` 任务目录下，与 PathFinder 统一存储同盘，故 `Files.move` 为同盘原子移动；入库后调用 `cancelUpload(identifier)` 显式回收任务/残留（rc.4 显式取消 API）。若元数据不可达，返回明确错误并要求客户端重新触发 `mergeAsync` 后重试 confirm。
 
 ### 6.4 下载流程（对应 F4）
 
@@ -504,7 +517,7 @@ upload-file:
 - 软删除：文件记录 `del_flag=1`、`del_at`，物理文件 `move` 到 `del/`，回收站记录 `expire_at=+30d`。
 - 恢复（G7）：`restore` 时校验原 `storage_path` 目录仍存在、且文件归属的部门/空间仍有效，将物理文件从 `del/` 迁回 `files/{原日期目录}/{原 uuid}.{ext}`，清除 `del_flag`/`del_at`，删除回收站记录。
 - 到期清理：`StorageCleanupScheduler`（每日 2:00）扫描回收站过期记录 → 删除物理文件 + 清库。
-- **UPLOADING 孤儿清理（G2）**：同调度器扫描 `status=UPLOADING` 且 `created_at` 超过 24h 的 `file_info`，直接删除记录并记录审计；物理分片由组件 `cleanup.task-ttl=24h` 兜底清理。
+- **UPLOADING 孤儿清理（G2）**：同调度器扫描 `status=UPLOADING` 且 `created_at` 超过 24h 的 `file_info`，直接删除记录并记录审计；物理分片/合并残留由组件 `StorageCleanupService` 回收（`cleanup.task-ttl=24h` TTL 清理 + `orphan-enabled` 孤儿目录清理，接线见 §6.2），两个清理口径一致（均 24h）。
 - 启动初始化：`ApplicationReadyEvent` 校验/创建 `files|upload|del|tmp` 目录。
 - 用量监控与告警（G9）：`StorageController` 用 `Files.getFileStore` 统计；使用率 ≥85% 时输出结构化告警日志，并以 `STORAGE_ALERT` 类型写入 `operation_log`（人工可查），预留通知扩展点（v1.1 接 Webhook/邮件）。
 
@@ -522,7 +535,19 @@ upload-file:
 
 ### 9.3 异常与错误码
 
-`GlobalExceptionHandler` 统一处理：`BusinessException`（400/403/404）、`AccessDeniedException`（403）、组件 `ChecksumMismatchException`（重传分片）、`QuotaExceededException`（507）。前端依据 `code` 映射组件错误码（400/401/404/416/507）与业务码。
+`GlobalExceptionHandler` 统一处理：`BusinessException`（400/403/404）、`AccessDeniedException`（403），以及组件 rc.4 类型化异常——按 `UploadErrorCode.getHttpStatusCode()` 映射稳定状态码，**不透传内部细节**（仅 warn 日志留痕）：
+
+| 组件异常（rc.4 类型化） | HTTP | 语义 |
+|---|---|---|
+| `UploadValidationException` | 400 | 分片参数非法、元数据不一致、大小超限、合并缺分片 |
+| `ChecksumMismatchException` | 400 | 分片 MD5 不一致，客户端自动重传该分片 |
+| `AccessDeniedException` | 403 | 任务归属越权（`UploadOwnerAccessControl` 拒绝非归属人/非管理员操作） |
+| `UploadTaskNotFoundException` | 404 | 任务不存在或已过期，重新触发上传/`mergeAsync` |
+| `UploadMergeConflictException` | 409 | 上传/合并进行中（含异步合并期间 `cancel`），稍后再试 |
+| `QuotaExceededException` | 507 | 存储配额不足 |
+| 其余 | 500 | 服务端失败，仅日志 |
+
+前端依据响应 `code` 映射（400/401/404/409/416/507）与业务码做友好提示。
 
 ### 9.4 审计
 
@@ -549,7 +574,7 @@ upload-file:
 
 | 项 | 说明 | 对策 |
 |---|---|---|
-| 组件与 Spring Boot 4.1.1 兼容 | 官方适配 Spring Boot 2.x | Sprint 1 先行 POC；失败降级 `upload-file-servlet`/`upload-file-core` 手动装配（接口契约不变） |
+| 组件与 Spring Boot 4.1.1 兼容 | 官方适配 Spring Boot 2.x（starter/servlet 依赖 `javax.servlet`，jakarta 不兼容） | 已落地：S0 POC 确认后采用 `upload-file-core` 手动装配（`UploadFileConfig`，接口契约不变）；2026-09 随组件升级至 **`1.0.0-rc.4`** 并试点 `getTask`/`cancelUpload`/`UploadErrorCode`（§6.3/§9.3，详见 PLAN §12） |
 | 组件产物 JDK8 字节码 | 与 JDK 26 运行兼容 | POC 阶段验证 |
 | Redis 9 + Jedis 兼容 | 组件 store-redis 基于 Jedis | POC 阶段验证，失败切 `metadata-store=file` |
 | 大文件 confirm 原子性 | 移动+元数据必须一致 | 同事务 + 残留清理兜底 |

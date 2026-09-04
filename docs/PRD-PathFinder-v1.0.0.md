@@ -173,10 +173,10 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 |---|---|
 | 功能名称 | 文件上传与持久化 |
 | 触发方式 | 单文件选择 / 批量多选 / 拖拽上传（Ant Design Pro Upload 组件） |
-| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.3` 组件（`upload-file-spring-boot-starter`）实现分片上传。协议：`POST /upload`（multipart，文件字段名 `file`），请求参数 `identifier`、`fileName`、`fileSize`、`chunkSize`、`chunkTotal`、`chunkIndex`、`chunkMd5`；进度查询 `GET /upload?action=progress&identifier=xxx`（据此跳过已传分片实现断点续传/秒传）；合并 `POST /upload?action=merge` 或异步 `mergeAsync` + `mergeStatus` 轮询 |
+| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.4` 组件（Spring Boot 4/jakarta 下落地为 `upload-file-core` 手动装配，接口契约一致，见 TSDD §6.1）实现分片上传。协议：`POST /upload`（multipart，文件字段名 `file`），请求参数 `identifier`、`fileName`、`fileSize`、`chunkSize`、`chunkTotal`、`chunkIndex`、`chunkMd5`；进度查询 `GET /upload?action=progress&identifier=xxx`（据此跳过已传分片实现断点续传/秒传）；合并 `POST /upload?action=merge` 或异步 `mergeAsync` + `mergeStatus` 轮询；取消 `POST /upload?action=cancel&identifier=xxx`（rc.4：中断上传并回收分片与残留） |
 | 业务规则 | 1. 支持类型：全类型（不限制）；2. 单文件上限默认 500MB（由 `upload-file.max-file-size` 控制，落盘前即拒绝超限）；3. 分片大小默认 5MB（`upload-file.max-chunk-size` 限制单片上限）；4. 上传时必须指定空间（个人/部门/公共）；5. 同名文件自动加后缀（`xxx(1).pdf`）避免覆盖；6. 开启分片 MD5 校验（`upload-file.verify-checksum=true`） |
 | 持久化逻辑 | 分片落 `upload-file.storage-dir` 分片目录；任务元数据经 `upload-file.metadata-store=redis` 存于 Redis 9（或 file/jdbc）；合并采用「临时文件 + 原子改名 + fsync」，按序合并并校验最终大小，合并后自动清理分片；合并完成的文件纳入 PathFinder 统一存储（UUID 命名 + 日期分目录） |
-| 异常处理 | 网络中断后客户端查询进度从断点续传；分片 MD5 不一致（`ChecksumMismatchException`）自动重传该分片；超限/参数非法返回 `400`，配额不足返回 `507`；令牌缺失返回 `401` |
+| 异常处理 | 网络中断后客户端查询进度从断点续传；分片 MD5 不一致（`ChecksumMismatchException`）自动重传该分片；rc.4 类型化错误按稳定状态码映射（TSDD §9.3）：参数非法/超限返回 `400`、任务不存在或已过期返回 `404`、上传/合并进行中返回 `409`、配额不足返回 `507`；令牌缺失返回 `401` |
 | 验收标准 | 大文件分片上传、断点续传、秒传成功且内容完整；`mergeAsync` 异步合并成功且状态轮询正确；同名不覆盖；超限文件被拦截并提示 |
 
 ### 4.4 文件下载（F4）
@@ -184,7 +184,7 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 编号 | F4 |
 |---|---|
 | 功能名称 | 文件下载 |
-| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.3` 完成分片上传与合并；**下载由 PathFinder 下载端点（`GET /api/file/download/{token}`，本地流式）提供**，实现与组件一致的 Range 断点续传语义：完整下载返回 `200`，携带 `Range` 头返回 `206 Partial Content`（区间不可满足返回 `416`）。组件 `GET /download?identifier=xxx` 端点保留用于未入库临时文件/联调兜底，不承载业务下载 |
+| 传输机制 | 基于 `cn.chenxinjie:upload-file:1.0.0-rc.4` 完成分片上传与合并；**下载由 PathFinder 下载端点（`GET /api/file/download/{token}`，本地流式）提供**，实现与组件一致的 Range 断点续传语义：完整下载返回 `200`，携带 `Range` 头返回 `206 Partial Content`（区间不可满足返回 `416`）。组件 `GET /download?identifier=xxx` 端点保留用于未入库临时文件/联调兜底，不承载业务下载 |
 | 业务规则 | 1. 仅可下载有权限的文件（下载令牌由后端签发，`identifier` 与真实磁盘路径不对外暴露）；2. 批量下载由本系统先 ZIP 打包为临时文件，再经下载端点返回；3. ZIP 打包数量上限 100 个文件/单次 |
 | 验收标准 | 无权限文件下载被拒绝（403）；下载文件名正确；ZIP 可正常解压；Range 断点续传后文件内容完整（MD5 一致） |
 
@@ -217,11 +217,11 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 编号 | F8 |
 |---|---|
 | 功能名称 | 大文件分片上传 / 断点续传 / 断点下载组件集成 |
-| 依赖坐标 | `cn.chenxinjie:upload-file:1.0.0-rc.3`（父 POM）；本系统实际引用 `cn.chenxinjie:upload-file-spring-boot-starter:1.0.0-rc.3`，可选 `upload-file-store-redis`（Redis 任务存储） |
-| 引入模块 | 1. `upload-file-spring-boot-starter`：自动配置，零编码注册 `POST /upload`、`GET /upload`（progress/merge/mergeAsync/mergeStatus）、`GET /download` 接口；2. `upload-file-store-redis`：任务元数据存储于 Redis 9（`upload-file.metadata-store=redis`） |
-| HTTP API 契约 | 上传分片 `POST /upload`（multipart 字段 `file`，参数 `identifier`/`fileName`/`fileSize`/`chunkSize`/`chunkTotal`/`chunkIndex`/`chunkMd5`）→ 返回进度 JSON；进度 `GET /upload?action=progress&identifier=xxx`；同步合并 `POST /upload?action=merge&identifier=xxx`；异步合并 `POST /upload?action=mergeAsync&identifier=xxx`（`202`）+ `GET /upload?action=mergeStatus&identifier=xxx`（`NONE/PENDING/RUNNING/SUCCEEDED/FAILED`）；下载 `GET /download?identifier=xxx`（支持 `Range`，`200/206/416`） |
-| 关键配置 | `storage-dir`（分片/合并根目录）、`metadata-store=redis` + `redis.*`（host/port/password/key-prefix/ttl-seconds）、`verify-checksum=true`、`max-chunk-size`、`max-file-size`、`quota.max-bytes`（全局配额）、`async-merge.enabled=true`、`cleanup.*`（过期任务/孤儿清理，可配 `use-redis-lock`）、`security.*`（可选共享令牌，本系统 v1.0 不启用，鉴权由 PathFinder 认证层完成） |
-| 错误码映射 | `400` 参数非法 / 超 `max-file-size`；`401` 访问令牌缺失；`404` 文件不存在；`416` Range 不可满足；`507 Insufficient Storage` 超全局配额 |
+| 依赖坐标 | `cn.chenxinjie:upload-file:1.0.0-rc.4`（父 POM；rc.4 相对 rc.3 只增不删）。v1.0.0 实际引用 `cn.chenxinjie:upload-file-core:1.0.0-rc.4` + `upload-file-store-redis:1.0.0-rc.4`（starter 依赖 `javax.servlet`、与 Spring Boot 4 不兼容未启用，见 TSDD §6.1/§11） |
+| 引入模块 | 1. `upload-file-core`：手工装配（`UploadFileConfig` 注册 `ResumableUploadService`，含 rc.4 `getTask`/`cancelUpload`），`POST /upload`、`GET /upload`（progress/merge/mergeAsync/mergeStatus/cancel）接口由 PathFinder `UploadController` 按组件契约实现；2. `upload-file-store-redis`：任务元数据存储于 Redis 9（`upload-file.metadata-store=redis`） |
+| HTTP API 契约 | 上传分片 `POST /upload`（multipart 字段 `file`，参数 `identifier`/`fileName`/`fileSize`/`chunkSize`/`chunkTotal`/`chunkIndex`/`chunkMd5`）→ 返回进度 JSON；进度 `GET /upload?action=progress&identifier=xxx`；同步合并 `POST /upload?action=merge&identifier=xxx`；异步合并 `POST /upload?action=mergeAsync&identifier=xxx`（`202`）+ `GET /upload?action=mergeStatus&identifier=xxx`（`NONE/PENDING/RUNNING/SUCCEEDED/FAILED`）；取消 `POST /upload?action=cancel&identifier=xxx`（rc.4，返回 `{canceled}`；异步合并 PENDING/RUNNING 期间返回 `409`）；下载 `GET /download?identifier=xxx`（支持 `Range`，`200/206/416`） |
+| 关键配置 | `storage-dir`（分片/合并根目录）、`metadata-store=redis` + `redis.*`（host/port/password/key-prefix/ttl-seconds）、`verify-checksum=true`、`max-chunk-size`、`max-file-size`、`quota.max-bytes`（全局配额，超限 507）、`cleanup.*`（`enabled/run-on-startup/interval/task-ttl/orphan-enabled` 由 PathFinder 接线组件 `StorageCleanupService` 消费；`use-redis-lock` 多实例预留）、`security.*`（可选共享令牌，本系统 v1.0 不启用，鉴权由 PathFinder 会话 + 归属 AccessControl 完成） |
+| 错误码映射 | 组件 rc.4 类型化异常（`UploadErrorCode`）稳定映射：`400` 参数非法 / 超 `max-file-size` / 分片 MD5 不一致（`ChecksumMismatchException`）；`403` 任务归属越权（`AccessDeniedException`，`UploadOwnerAccessControl`）；`404` 任务不存在或已过期（`UploadTaskNotFoundException`）；`409` 上传/合并进行中（`UploadMergeConflictException`）；`507 Insufficient Storage` 超全局配额（`QuotaExceededException`）；`401` 访问令牌缺失；`416` Range 不可满足 |
 | 集成约束 | 1. PathFinder 认证与数据权限校验位于该组件接口之前，校验通过后生成内部 `identifier`（UUID），不对外暴露真实存储路径；2. 前端上传协议（multipart 字段名与全部请求参数）必须与组件契约一致；3. 组件元数据不落入 PathFinder 业务库，上传任务状态由组件管理（Redis/File TaskStore）；4. 业务下载由 PathFinder 下载端点承载（见 F4），组件 `/download` 仅用于未入库临时文件/联调兜底 |
 | 验收标准 | 集成后分片上传/断点续传/秒传/Range 下载端到端可用；配置项与组件 README 契约一致；错误码能被前端识别并友好提示 |
 
@@ -249,7 +249,7 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 | 后端 | JDK 26 + Spring Boot 4.1.1 + Spring Security + Spring Data JPA + MySQL 8（唯一数据库） |
 | 缓存 | Redis 9：会话/Token 存储、文件元信息缓存、部门树与用户信息缓存、登录失败计数（锁定） |
 | 鉴权 | Spring Security + Redis 会话管理（单会话，多登录踢出）；图片验证码（Redis 一次性校验）；前端 RSA 公钥加密密码传输、后端 BCrypt 校验；登录失败计数落 Redis（连续 5 次锁定 10 分钟）；自定义登录成功/失败处理器 |
-| 大文件传输 | 集成 `cn.chenxinjie:upload-file:1.0.0-rc.3`（`upload-file-spring-boot-starter` + `upload-file-store-redis`）实现分片上传 / 断点续传 / MD5 校验 / 异步合并 / 过期任务清理；Range 断点下载由 PathFinder 下载端点实现（语义与组件一致），接口契约见 F8/F4 |
+| 大文件传输 | 集成 `cn.chenxinjie:upload-file:1.0.0-rc.4`（落地为 `upload-file-core` 手动装配 + `upload-file-store-redis`；starter 与 SB4/jakarta 不兼容未启用）实现分片上传 / 断点续传 / MD5 校验 / 异步合并 / rc.4 显式取消与 confirm 后回收（`cancelUpload`）；Range 断点下载由 PathFinder 下载端点实现（语义与组件一致），接口契约见 F8/F4 |
 | 数据权限 | 文件表含 `space_type`（PERSONAL/DEPT/PUBLIC）+ `dept_id` + `owner_id`（归属人）+ `creator_id`，查询时按可见性规则动态过滤；归属变更仅更新元数据不移动物理文件（见 F9） |
 | 列表分页 | **真分页**：后端 Spring Data JPA `Pageable` + 数据库 `LIMIT/OFFSET` 分页（不依赖前端内存分页），返回当前页数据与 `total`；`pageNum/pageSize` 参数化并限制 `pageSize` 上限（默认 20，最大 100） |
 | 文件存储 | 本地磁盘持久化（`upload-file.storage-dir` 落分片与合并文件 + `storage.root` 归档业务文件），UUID 文件名 + 日期分目录 + 软删除归档 |
@@ -388,4 +388,4 @@ path-finder/
 | 存储目录损坏 | 文件不可恢复 | 目录分级持久化 + 备份脚本 |
 | 单点故障 | 服务中断 | v1.0 单机部署可接受，v1.1 引入双机容灾评估 |
 | Redis 故障 | 会话丢失、缓存失效、断点续传状态（`upload:task:`）丢失 | Redis 开启持久化；故障时降级为 DB 直查与会话本地兜底，已落盘文件不受影响；关键上传任务可切换 `metadata-store=file` 兜底 |
-| 第三方组件兼容性 | `upload-file-spring-boot-starter` 官方面向 Spring Boot 2.x，与 Spring Boot 4.1.1 / Redis 9 的集成存在适配风险 | 集成阶段先行 POC 验证；如 starter 不适配，降级为直接引用 `upload-file-servlet`（Servlet 3.0+ 接入）或 `upload-file-core` 手动装配，接口契约不变 |
+| 第三方组件兼容性 | `upload-file-spring-boot-starter` 官方面向 Spring Boot 2.x，与 Spring Boot 4.1.1 / Redis 9 的集成存在适配风险 | 集成阶段先行 POC 验证；如 starter 不适配，降级为直接引用 `upload-file-servlet`（Servlet 3.0+ 接入）或 `upload-file-core` 手动装配，接口契约不变。**已落地**：starter 与 jakarta 不兼容，采用 `upload-file-core:1.0.0-rc.4` 手工装配（TSDD §6.1/§11，2026-09 随组件升级 rc.4 并试点 `getTask/cancelUpload/UploadErrorCode`，见 PLAN §12） |

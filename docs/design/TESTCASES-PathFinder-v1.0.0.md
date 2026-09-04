@@ -5,7 +5,7 @@
 | 关联文档 | PRD v1.0.0 / TSDD v1.0.0 / PLAN v1.0.0 / REVIEW v1.0.0 / SYNC 设计稿 |
 | 测试层次 | 单元 / 集成 / 组件联调 / 前端 / E2E |
 | 优先级 | P0（阻塞发布）/ P1（必须）/ P2（可选） |
-| 迭代登记 | 2026-09-02：登记自动化回归映射（§15）、批量操作与目录同步（§15）、安全矩阵（§16）、已知缺口（§17） |
+| 迭代登记 | 2026-09-02：登记自动化回归映射（§15）、批量操作与目录同步（§15）、安全矩阵（§16）、已知缺口（§17）。2026-09-04：X1（FORBIDDEN 审计）/X2（停用口径）/X3（恢复校验）关闭，后端自动化计数 147 |
 
 ---
 
@@ -339,7 +339,7 @@
 
 | 自动化测试类 | 覆盖 TC / 行为 | 运行条件 |
 |---|---|---|
-| `AuthServiceTest` | LOGIN-002/003/004(部分)/006/007/008/010/013/015、G6 会话映射续期、改密/登出 | 纯单元 |
+| `AuthServiceTest` | LOGIN-002/003/004(部分)/006/007/008/010/013/015、G6 会话映射续期、改密/登出、X2 停用口径（LOGIN-021：专用文案且不计数） | 纯单元 |
 | `util/CaptchaUtilTest` | LOGIN-001/003（验证码生成） | 纯单元 |
 | `util/PathUtilTest`、`RsaKeyHolderTest`、`RedisTtlPolicyTest` | 路径/扩展名、DEP-003、TTL 抖动 | 纯单元 |
 | `security/TokenAuthFilterTest` | LOGIN-016/019/020/021/022/023（过滤器语义） | 纯单元 |
@@ -349,11 +349,12 @@
 | `service/DataPermissionMatrixTest` | PERM-001~008 全矩阵、OWNER-001~009(越权部分)、上传部门必选、归属审计 | MySQL |
 | `controller/FileControllerDownloadTest` | DL-003/004/005、Range 200/206/416、ZIP 头 | 纯单元 |
 | `config/StorageCleanupSchedulerTest` | FILE-011/014（到期清理 / UPLOADING 孤儿，G2） | 纯单元 |
+| `config/GlobalExceptionAuditTest` | X1 / AUDIT-007：403（Biz / Spring / 组件）→ `FORBIDDEN success=0` 审计、审计失败不掩盖 403 | 纯单元 |
 | `config/DataInitializerTest` | ORG-014、G1 Seed | 纯单元 |
 | `service/StorageServiceTest` | ST-002/003/007 降级路径、目录初始化 | 纯单元 |
 | `service/LogServiceTest` | AUDIT-001/002/003/009（record/recordLogin/归档 CSV） | 纯单元 |
 | `service/SyncScannerServiceTest` | SYNC-001~015、下载拦截与刷新 | MySQL |
-| `service/FileUploadFlowTest` | UP-001/003(部分)/006/010/011、FILE-009~012(部分)、BATCH-001~006 | MySQL |
+| `service/FileUploadFlowTest` | UP-001/003(部分)/006/010/011、FILE-009~012(部分)、BATCH-001~006、FILE-015 恢复正/负例（X3：部门删除/物理缺失拒绝恢复） | MySQL |
 | `service/AuthServiceTest`（captchaEnabled 分支） | LOGIN-002 关闭开关后跳过验证码（E2E 前置） | 纯单元 |
 | `config/DataInitializerTest`（bootstrap 分支） | ORG-014 变体：`ADMIN_BOOTSTRAP_PASSWORD` 固定密码 + 不强制改密 | 纯单元 |
 | E2E `tests/e2e/01-smoke.spec.ts` | 登录页验证码/表单渲染 | Playwright + 本机 Chrome |
@@ -377,18 +378,20 @@
 
 | # | 项 | 现状 | 建议 |
 |---|---|---|---|
-| X1 | 越权操作审计留痕 | 403 直接抛 `BizException.forbidden`，无 `success=0` 审计写入（TSDD 9.4 `AuditAspect` 未实现） | 补实现后启用 TC-AUDIT-007 / OWNER-004 审计断言 |
-| X2 | 停用账号登录口径 | `AuthService` 将 status=0 并入"用户名或密码错误"并累加失败计数，与 PRD F1「账号已停用，请联系管理员」不符 | 产品定口径后固化测试 |
-| X3 | 回收站恢复校验 | `restore` 未校验原部门/存储路径有效性（TSDD 8.2/G7 要求） | 补实现 + TC-FILE-015 物理路径断言 |
-| X4 | 页面组件覆盖 | FileList/Recycle/User/Dept/Log/Storage/ChangePassword/MainLayout/UploadModal/Login 已覆盖；批量归属提交、回收站/用户批量勾选等深层弹窗交互待补 | 追加覆盖（优先级低于 X1~X3） |
-| X5 | E2E（Playwright） | 骨架已建（`frontend/tests/e2e`），验证码阻断全自动登录 | 已解决：新增验证码绕过开关 `CAPTCHA_ENABLED=false` + 种子账号 `ADMIN_BOOTSTRAP_PASSWORD`（仅测试部署开启）；E2E 已启用并通过 `scripts/run-e2e-docker.sh`（独立 pathfinder_test 栈，本机 Chrome 跑 TC-E2E-001/003，跑完恢复原栈） |
-| X6 | 性能与 CI | 无压测脚本；无 `.github` CI 与 JaCoCo/Jest coverage 门禁 | 建 CI（对应 PLAN PF-005）+ 性能脚本后启用 TC-PERF |
-| X7 | 集成测试运行条件 | `@SpringBootTest` 需 MySQL `pathfinder_test` 实例 | 由 `docker/docker-compose.test.yml`（暴露 3306/6379 并建测试库）满足；本地 `mvn test` 前 `docker compose ... -f docker-compose.test.yml up -d mysql redis` |
+| X1 | 越权操作审计留痕 | **已修复（2026-09-04）**：403 由 `GlobalExceptionHandler` 统一写失败审计——`LogService.record(FORBIDDEN, targetType=API, success=0)`，覆盖 `BizException(403)` / Spring `AccessDeniedException` / 组件 `AccessDeniedException` 三类出口；LogService 可选注入、审计写入失败不掩盖原始响应 | 已闭环：`GlobalExceptionAuditTest`（403→`record(...,false)`、非 403 不审计、审计异常不阻断）；真实 HTTP 越权留痕由 E2E 03 覆盖 → 启用 TC-AUDIT-007 / OWNER-004 审计断言 |
+| X2 | 停用账号登录口径 | **已修复（2026-09-04）**：`AuthService.login` 对 `status=0` 单列分支——返回 403「账号已停用，请联系管理员」，`recordLogin(false,"账号已停用")`，**不累加失败计数、不触发锁定** | 已闭环：`AuthServiceTest.disabledAccount_rejectedWithSpecificMessage_notCounted`（文案 + verify 未 `increment`）；与 TokenAuthFilter「在线被停用即 401」互补覆盖 LOGIN-021/022 |
+| X3 | 回收站恢复校验 | **已修复（2026-09-04）**：`FileService.restore` 前置校验——DEPT 归属部门必须仍有效（`DeptService.get` 对软删除部门抛 404 后转明确提示）+ `del/` 物理文件必须存在（缺失提示「已被清理」，不再静默置 READY） | 已闭环：`FileUploadFlowTest.restore_whenDeptDeleted_fails` / `restore_whenDelFileMissing_fails` + TC-FILE-015 迁回正例；`DeptService.get` 同步修正为忽略已删除部门 |
+| X4 | 页面组件覆盖 | FileList/Recycle/User/Dept/Log/Storage/ChangePassword/MainLayout/UploadModal/Login 已覆盖；批量归属提交、回收站/用户批量勾选等深层弹窗交互待补 | 追加覆盖（优先级低于 X1~X3，延后迭代） |
+| X5 | E2E（Playwright） | 已解决：验证码绕过开关 `CAPTCHA_ENABLED=false` + 种子账号 `ADMIN_BOOTSTRAP_PASSWORD`（仅测试部署开启）；E2E 已启用并通过 `scripts/run-e2e-docker.sh`（独立 pathfinder_test 栈，本机 Chrome 跑 TC-E2E-001/003，跑完恢复原栈） | 已解决（保持） |
+| X6 | 性能与 CI | 无压测脚本；无 `.github` CI 与 JaCoCo/Jest coverage 门禁 | 建 CI（对应 PLAN PF-005）+ 性能脚本后启用 TC-PERF（延后迭代） |
+| X7 | 集成测试运行条件 | 由 `docker/docker-compose.test.yml`（暴露 3306/6379 并建测试库，redis 默认 `requirepass=pathfinder123`，测试 profile 已对齐默认口令）满足；本地 `mvn test` 前 `docker compose ... -f docker-compose.test.yml up -d mysql redis` | 已满足（保持；v1.1 可再上 Testcontainers 免手动起栈） |
 
-### 17.1 本次自动化测试运行结论（2026-09-03）
+> 2026-09-04 关闭登记：**X1 / X2 / X3** 已实现并闭环（代码与用例见 §16 映射、§17.1 运行结论）；X4（前端深层交互）与 X6（性能 / CI）仍开放，转后续迭代。后端自动化用例 139 → **147**。
+
+### 17.1 本次自动化测试运行结论（2026-09-04）
 
 | 套件 | 命令 | 结果 | 前置 |
 |---|---|---|---|
-| 后端单元/集成 | `cd server && mvn test` | 132 通过 / 0 失败 | `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.test.yml up -d mysql redis`（宿主机连 3306 pathfinder_test） |
+| 后端单元/集成 | `cd server && mvn test` | 147 通过 / 0 失败 | `docker compose -f docker-compose.yml -f docker-compose.local.yml -f docker-compose.test.yml up -d mysql redis`（宿主机连 3306 pathfinder_test；Redis 默认 `requirepass=pathfinder123` 与测试 profile 对齐） |
 | 前端单测 | `cd frontend && npm test` | 67 通过 / 0 失败 | 无 |
 | E2E（本机 Chrome） | `bash scripts/run-e2e-docker.sh` | 3 通过（01-smoke / 02-full-flow / 03-permission） | Docker E2E 栈（pathfinder_test + 验证码绕过 + 种子账号），跑完自动恢复原栈 |

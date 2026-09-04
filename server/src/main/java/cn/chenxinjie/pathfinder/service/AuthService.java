@@ -87,7 +87,13 @@ public class AuthService {
         String password = decryptPassword(encryptedPassword);
         User user = userRepository.findByUsernameAndDelFlag(username, 0).orElse(null);
 
-        boolean ok = user != null && user.getStatus() == 1 && passwordEncoder.matches(password, user.getPassword());
+        if (user != null && user.getStatus() == 0) {
+            // 停用账号（X2）：与「密码错误」区分口径，不计失败、不触发锁定
+            logService.recordLogin(user.getId(), username, ip, ua, false, "账号已停用");
+            throw BizException.forbidden("账号已停用，请联系管理员");
+        }
+
+        boolean ok = user != null && passwordEncoder.matches(password, user.getPassword());
         if (!ok) {
             String failKey = "auth:fail:" + username;
             long count = ttl.increment(failKey, 600);

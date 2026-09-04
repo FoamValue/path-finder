@@ -60,16 +60,18 @@ upload-file:
   max-chunk-size: 5242880
   max-file-size: 524288000
   max-request-size: 10485760
+  quota:
+    max-bytes: ${UPLOAD_QUOTA_MAX_BYTES:0}   # 0 = 关闭；组件全局容量配额，超限返回 507（保守估算：进行中声明大小 + 已合并产物）
   async-merge:
     enabled: true
     thread-pool-size: 2
   cleanup:
-    enabled: true
+    enabled: true        # 组件 StorageCleanupService 开关（core 手工装配由 PathFinder 接线，见 UploadFileConfig）
     run-on-startup: true
     interval: 1h
-    task-ttl: 24h
-    orphan-enabled: true
-    use-redis-lock: true
+    task-ttl: 24h        # 未完成任务闲置 TTL（与 redis.ttl-seconds 一致）
+    orphan-enabled: true # 无任务记录的孤儿分片/合并目录回收
+    use-redis-lock: true # 保留键：单实例部署不使用（多实例需接线 RedisCleanupLock）
   security:
     enabled: false
 
