@@ -4,17 +4,21 @@ import type { DeptNode } from '../api/types';
 
 describe('flatDepts', () => {
   it('扁平化多层部门树并保留父子顺序', () => {
+    const node = (id: number, parentId: number, name: string, children: DeptNode[] = []): DeptNode => ({
+      id,
+      parentId,
+      name,
+      sortOrder: id,
+      status: 1,
+      children,
+    });
+
     const tree: DeptNode[] = [
-      {
-        id: 1,
-        parentId: 0,
-        name: '研发部',
-        children: [
-          { id: 2, parentId: 1, name: '前端组', children: [] },
-          { id: 3, parentId: 1, name: '测试组', children: [] },
-        ],
-      },
-      { id: 4, parentId: 0, name: '财务部', children: [] },
+      node(1, 0, '研发部', [
+        node(2, 1, '前端组'),
+        node(3, 1, '测试组'),
+      ]),
+      node(4, 0, '财务部'),
     ];
 
     const options = flatDepts(tree);

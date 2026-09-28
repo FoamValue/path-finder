@@ -139,14 +139,14 @@ class FileUploadFlowTest {
         uploadChunk(name, ticket, data, 0, 1);
         mergeAndWaitSucceeded(ticket.getIdentifier());
 
-        var task = uploadService.getTask(ticket.getIdentifier());
+        var task = uploadService.getTaskTrusted(ticket.getIdentifier());
         assertTrue(task.isPresent() && task.get().getFinalPath() != null
                         && Files.isRegularFile(Path.of(task.get().getFinalPath())),
                 "合并后组件任务应存在且 finalPath 指向真实产物文件");
 
         fileService.confirm(ticket.getFileId(), admin);
 
-        assertTrue(uploadService.getTask(ticket.getIdentifier()).isEmpty(),
+        assertTrue(uploadService.getTaskTrusted(ticket.getIdentifier()).isEmpty(),
                 "confirm 后组件任务应被 cancelUpload 显式清理（防孤儿残留）");
         assertEquals("READY", fileService.getFile(ticket.getFileId()).getStatus());
     }

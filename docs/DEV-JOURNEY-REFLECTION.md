@@ -2,7 +2,7 @@
 
 > 本文基于 path-finder 业务工程与 upload-file 组件仓库共建过程的观察写成。整理于 2026-09。
 
-> 修订：2026-09 组件升级 `rc.3 → rc.4` 落地后补充「盲点 1 的收口」与自动化建议状态（见文内标注）。
+> 修订：2026-09 组件升级 `rc.3 → rc.4` 落地后补充「盲点 1 的收口」与自动化建议状态；组件升至 `rc.5` 后补充「自我升级滞后」的第二次闭环与 ADR-001 决策记录（见文内标注）。
 
 ## 一、我认识的我
 
@@ -21,6 +21,12 @@
 1. **自产组件的"自我升级滞后"。** 组件仓库已推进到 `rc.4`，并落地 `getTask/cancelUpload/UploadErrorCode` 等集成反馈；业务工程 `pom.xml` 仍锁在 `1.0.0-rc.3`。既是供应商也是客户，却存在两个仓库之间的时间差——组件侧把反馈做完了，消费侧从未试点。它藏在两个仓库各自的"干净"里，最容易被忽略。
 
    **（已收口）** 2026-09 落地 rc.4 升级补丁并回归（见 PLAN §12、`CHANGELOG.md` Unreleased 条目）：依赖升至 rc.4；confirm 改经 `getTask(identifier).finalPath` 定位合并产物，入库成功后 `cancelUpload(identifier)` 显式回收；`UploadController` 新增 `action=cancel`；`GlobalExceptionHandler` 按 `UploadErrorCode` 注册稳定错误映射（400/404/409/507，不透传内部细节）；`UploadFileErrorMappingTest` + `FileUploadFlowTest` 增补回归。收口动作本身仍走"先文档、再代码"：TSDD §6/§9.3/§11、PRD F8、PLAN §12、README 同步更新，未遗留 rc.3 引用。
+
+   **（2026-09 再发生、再收口：rc.5）** 组件仓库推进到 `1.0.0-rc.5` 后，盲点 1 以更快节奏重演——这次组件侧带回了**新决策点**：rc.5 提供 `upload-file-spring-boot-starter-jakarta`，首次消除了「starter 与 Spring Boot 4 不兼容」的历史阻塞（TSDD §11）。业务工程按同一流程闭环（依赖 rc.4 → rc.5、PLAN §13），并新产出 `docs/design/ADR-001-upload-file-starter-jakarta.md`：评估四个冲突面（`/upload` 路由冲突、Bean 半冲突、HTTP 错误体/审计契约让渡、下载安全面）后结论为**不迁移**、维持 core 手工装配，并把撤销/迁移触发条件写成 ADR 第 6 节。要点：盲点 1 的根治仍是「组件依赖对齐自动化」（见下第 4 节）——两次升级都靠手工记住，rc.5 升级完成后该自动化仍未落地，是本节最想强调的未了项。
+
+    **（2026-09 三度收口：rc.6 迁移）** rc.5 的 ADR「不迁移」并非终局，而是把撤销条件写成了可触发的机制。组件随即发布 `1.0.0-rc.6`——专门回应本工程 ADR/UPGRADE 评估，补齐 `/download` 默认关闭、`AccessControl.decide()` 返回 403、`AccessControlListener` 审计、`UploadErrorRenderer`/`endpoint`/`http`/`multipart` 可控接入。ADR-001 §6 撤销条件 #2/#3 满足后，按 UPGRADE 执行迁移：删除 `UploadFileConfig`/`UploadController`，`/upload` 交给组件 `UploadServlet`，越权审计迁到决策点 `UploadAccessAuditListener`。这一步说明「先把决策与撤销条件写下来」本身就是机制——**让下一次升级有据可依，而不是靠记忆**（见下第 4 节仍未落地的「依赖对齐自动化」）。
+
+    **（2026-09 四度收口：rc.7 → rc.8）** rc.7 回应本工程「rc.6 迁移评审反馈」的 P0/P1；rc.8 是 GA 前最后一个 rc，合并后 API 与属性面冻结。两次升级仍是"手工记住"：rc.7 新增 `UploadTrustedConfig`，rc.8 又因 starter 自动装配而删除它；依赖版本先在两处硬编码，rc.8 才改用 `upload-file-bom` 单点管理。这恰好再次印证第 4 节——**版本对齐仍缺自动化**，本次靠 BOM + `upload-file.version` 属性把"消费侧单点"补上，但"何时升级/谁触发"仍需人工判断。rc.8 也让审计从"只记 identifier/action"升级为携带 `AccessContext`（method/URI/IP/UA），说明组件在 GA 前把"可观测性对齐登录审计"补齐，消费侧只需覆写 6 参重载即可受益。
 
 2. **文档与代码的漂移，靠"事后抽查"而非"预防"。** 文档体系庞大且互相引用（TC 映射、G 闭环、双语 CHANGELOG、双仓库），内容质量高，但一致性没有任何校验器。关注了写什么，没关注"怎么证明写对了"。
 
@@ -48,7 +54,7 @@
    - README/pom/docker 版本与声明三方对齐；
    - 双语 CHANGELOG 同步脚本。
 
-4. **组件依赖对齐自动化。** Renovate/Dependabot 把 `upload-file rc.3→rc.4` 直接提 PR 并在消费方跑集成/回归再合入；配合镜像目录 sync 脚本，让两个仓库始终同一版本。**（2026-09 已手工试点一次 rc.4 升级并回归，见盲点 1 收口；本节自动化用于把该流程固化，避免回归到"手工记住"。）**
+4. **组件依赖对齐自动化。** Renovate/Dependabot 把 `upload-file rc.3→rc.4` 直接提 PR 并在消费方跑集成/回归再合入；配合镜像目录 sync 脚本，让两个仓库始终同一版本。**（2026-09 已手工试点两次升级并回归——rc.4 见盲点 1 收口、rc.5 见 PLAN §13 与 ADR-001；本节自动化用于把该流程固化，避免继续依赖"手工记住"。）**
 
 5. **安全流水线。** 依赖漏洞扫描（mvn dependency-check / OSV / npm audit）+ gitleaks 进 CI；用测试锁死"500 响应不得包含绝对路径/异常类名"等信息泄漏；补齐 X1 越权失败审计后转回归断言。**（X1 已于 2026-09-04 补 FORBIDDEN 失败审计并转回归断言，见 TESTCASES §17；漏洞扫描/CI 仍为开放项 X6。）**
 

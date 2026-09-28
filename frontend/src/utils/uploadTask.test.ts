@@ -112,10 +112,12 @@ describe('defaultUploadApi（真实默认实现）', () => {
   it('兼容组件裸对象响应（无 {code} 包装），上传全流程成功', async () => {
     localStorage.setItem('pf_token', 'tok');
     const calls: string[] = [];
+    const fetchOpts: Array<RequestInit | undefined> = [];
     vi.stubGlobal(
       'fetch',
       vi.fn(async (url: string, init?: RequestInit) => {
         calls.push(String(init?.method ?? 'GET') + ' ' + url.split('?')[0]);
+        fetchOpts.push(init);
         const json = (data: unknown) =>
           new Response(JSON.stringify(data), { status: 200 });
         // /api/** 走 client.ts 的 ApiResponse 包装
@@ -149,5 +151,12 @@ describe('defaultUploadApi（真实默认实现）', () => {
     expect(calls).toContain('POST /upload');
     expect(calls).toContain('GET /upload');
     expect(calls).toContain('POST /api/file/9/confirm');
+    // M2：上传端点不再附加 Authorization 头，仅凭 Cookie 携带会话
+    for (const opt of fetchOpts) {
+      if (opt) {
+        const h = opt.headers as Record<string, string> | undefined;
+        expect(h?.Authorization).toBeUndefined();
+      }
+    }
   });
 });

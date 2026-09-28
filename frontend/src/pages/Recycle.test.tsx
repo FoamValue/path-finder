@@ -4,7 +4,7 @@ import Recycle from '../pages/Recycle';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
-  post: vi.fn(async () => undefined),
+  post: vi.fn(async (): Promise<unknown> => undefined),
   del: vi.fn(async () => undefined),
   messageSuccess: vi.fn(),
   messageError: vi.fn(),

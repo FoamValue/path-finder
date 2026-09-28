@@ -21,7 +21,21 @@
         <java.version>26</java.version>
         <maven.compiler.release>26</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <upload-file.version>1.0.0-rc.9</upload-file.version>
     </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- rc.8 新增 BOM：统一对齐 upload-file 各模块版本，子依赖无需再写 version -->
+            <dependency>
+                <groupId>cn.chenxinjie</groupId>
+                <artifactId>upload-file-bom</artifactId>
+                <version>${upload-file.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
 
     <dependencies>
         <dependency>
@@ -45,18 +59,28 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- 大文件分片上传/断点续传组件（core 纯 Java 手动装配；starter 依赖 javax.servlet 与
-             Spring Boot 4/jakarta 不兼容，按 TSDD 11 风险预案降级为 core 手动装配，接口契约不变）
-             rc.4：confirm 经 getTask().finalPath 定位产物、cancelUpload 显式清理、UploadErrorCode 稳定错误语义 -->
+        <!-- 大文件分片上传/断点续传组件（rc.8 官方 jakarta HTTP 层，版本由 upload-file-bom 统一管理）：
+             starter 自动装配 core 服务并注册 UploadServlet(/upload)；下载端点默认关闭（业务下载走
+             /api/file/download/{token}）。迁移依据 docs/design/ADR-001 + UPGRADE-upload-file-starter-jakarta。
+             rc.6：endpoint/http/multipart 可控、AccessControl.decide() 返回 403、AccessControlListener 审计；
+             rc.7：RedisTaskStore 索引泄漏/N+1、starter 消费 UploadErrorRenderer、multipart 安全默认、
+             分布式 IdentifierLockProvider、原子 QuotaStore、受信读 API（TrustedUploadService）；
+             rc.8：BOM、quota.store=redis 启动自动对账 + 清理回收配额、分布式锁持有期续租
+             （lock.renew-interval）、RedisTaskStore 索引迁移原子化/list() 分批 MGET、审计上下文
+             AccessContext（method/uri/IP/UA）+ 6 参监听器重载、observability.access-log-scope、
+             starter 自动装配 TrustedUploadService（本工程不再手写 UploadTrustedConfig）。
+             rc.9：安全收口（2 高危 + 5 中危）——max-chunk-size 默认 -1→10MB 且三层上限全无界时
+             启动失败（fail-fast）、require-checksum 兜底 MD5 校验、下载 finalPath 规范化前缀校验、
+             访问日志控制字符消毒、孤儿清理单条隔离、超限分块流式终止。 -->
         <dependency>
             <groupId>cn.chenxinjie</groupId>
-            <artifactId>upload-file-core</artifactId>
-            <version>1.0.0-rc.4</version>
+            <artifactId>upload-file-spring-boot-starter-jakarta</artifactId>
         </dependency>
+        <!-- 显式保留：starter 将 store-redis 声明为 optional（不传递引入），
+             metadata-store=redis 与 cleanup.use-redis-lock 依赖其 RedisTaskStore/RedisCleanupLock -->
         <dependency>
             <groupId>cn.chenxinjie</groupId>
             <artifactId>upload-file-store-redis</artifactId>
-            <version>1.0.0-rc.4</version>
         </dependency>
 
         <!-- 数据库 -->

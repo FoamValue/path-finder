@@ -6,6 +6,7 @@ import org.springframework.context.annotation.Configuration;
 
 import java.nio.file.Path;
 import java.time.Duration;
+import java.util.List;
 
 /**
  * PathFinder 自有配置：存储根目录、安全参数、目录同步扫描。
@@ -58,6 +59,13 @@ public class PathProperties {
         private boolean captchaEnabled = true;
         /** 空库 Seed 时若配置则用该密码创建首个 admin 且不强制改密，用于可重复的自动化测试种子账号 */
         private String bootstrapAdminPassword = "";
+        /**
+         * CORS 允许的可信前端来源（显式白名单，禁止通配；配合 allowCredentials=true 使用）。
+         * 默认覆盖 vite 本地开发源；生产由 PATHFINDER_SECURITY_CORS_ALLOWED_ORIGINS 覆盖。
+         */
+        private List<String> corsAllowedOrigins = List.of("http://localhost:5173", "http://localhost:8000");
+        /** 是否信任反向代理注入的 X-Forwarded-For（审计 IP 溯源）。仅当部署在受信反向代理后置 true，否则回退 RemoteAddr。 */
+        private boolean trustProxyHeader = false;
     }
 
     @Data

@@ -36,6 +36,10 @@ pathfinder:
     session-timeout: 30m
     login-max-fail: 5
     login-lock-minutes: 10
+    # CORS 显式白名单（禁止通配 + 凭据）；生产用路径形式变量覆盖
+    cors-allowed-origins: ${PATHFINDER_SECURITY_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8000}
+    # 仅当部署在受信反向代理后置 true，才会读取 X-Forwarded-For 作为审计 IP
+    trust-proxy-header: ${PATHFINDER_SECURITY_TRUST_PROXY_HEADER:false}
     # 验证码开关（仅测试环境置 false，生产必须保持 true）
     captcha-enabled: ${CAPTCHA_ENABLED:true}
     # 空库 Seed 时给首个 admin 使用的固定密码（配置后不强制改密）；默认用 Init@123 并强制改密
@@ -57,23 +61,57 @@ upload-file:
     key-prefix: "upload:task:"
     ttl-seconds: 86400
   verify-checksum: true
+  # rc.9 安全收口：verify-checksum=true 时必须一并开启 require-checksum，缺失 chunkMd5 的分块
+  # 将被拒绝并删除，而不再静默跳过校验（前端每个分片均附带 chunkMd5，开启无副作用）。
+  require-checksum: true
   max-chunk-size: 5242880
   max-file-size: 524288000
   max-request-size: 10485760
   quota:
     max-bytes: ${UPLOAD_QUOTA_MAX_BYTES:0}   # 0 = 关闭；组件全局容量配额，超限返回 507（保守估算：进行中声明大小 + 已合并产物）
+  # rc.6 端点开关：/upload 由组件 UploadServlet 承载；/download 默认关闭——业务下载走
+  # /api/file/download/{token}，不暴露「已合并未确认」临时产物的裸下载面（最小暴露）。
+  endpoint:
+    enabled: true
+    upload-enabled: true
+    download-enabled: false
+  # rc.6 失败响应体：legacy = 组件端点模型（前端仅消费状态码/文本，兼容）；standard = 统一 UploadHttpError。
+  http:
+    error-body: legacy
+  # rc.6 multipart 策略：component = 以 max-chunk-size/max-request-size 作 Servlet @MultipartConfig
+  #（5MB 分片 + 表单开销 < 10MB）；spring = 跟随 spring.servlet.multipart.*；unlimited = 关闭容器上限。
+  multipart:
+    strategy: component
   async-merge:
     enabled: true
     thread-pool-size: 2
   cleanup:
-    enabled: true        # 组件 StorageCleanupService 开关（core 手工装配由 PathFinder 接线，见 UploadFileConfig）
+    enabled: true        # 组件 StorageCleanupService 开关（rc.6 起由 starter 自动装配）
     run-on-startup: true
     interval: 1h
     task-ttl: 24h        # 未完成任务闲置 TTL（与 redis.ttl-seconds 一致）
     orphan-enabled: true # 无任务记录的孤儿分片/合并目录回收
-    use-redis-lock: true # 保留键：单实例部署不使用（多实例需接线 RedisCleanupLock）
+    use-redis-lock: true # rc.6 起生效：RedisCleanupLock 租约锁（多实例仅一个清理者；单实例无副作用）
+  observability:
+    access-log: false    # 越权审计已由 UploadAccessAuditListener 落库；此开关仅额外输出结构化访问日志
+    # rc.8 降噪：access-log=true 时默认 scope=task（deny + 任务级事件，每个任务仅首个分片放行一条）；
+    # 需要 rc.7 的逐决策日志设 all，仅 deny 设 deny。access-log=false 时本项无效果。
+    access-log-scope: task
+  # rc.8 受信读门面：starter 自动装配 TrustedUploadService（@ConditionalOnMissingBean），供 FileService
+  # confirm 等可信服务端流程使用；设为 false 可抑制该 Bean（本工程需要，保持默认 true）。
+  trusted-upload-service:
+    enabled: true
+  # rc.7/rc.8 可选能力（默认即当前行为，单实例部署无需改动；PRD 明确非目标多实例）：
+  # lock:
+  #   identifier-lock: local        # 多实例改 redis（RedisIdentifierLockProvider，SET NX PX 串行化同 identifier）
+  #   acquire-timeout: 10s
+  #   ttl: 30s
+  #   renew-interval: 0s            # rc.8：0 = 按 ttl/3 自动续租（长合并不再因 TTL 到期失效）
+  # quota:
+  #   store: task-store             # 多实例/高并发改 redis（RedisQuotaStore，Lua 原子 check-and-reserve；
+  #                                 # rc.8：启动期自动 reconcile 对齐计数，清理回收已合并未确认任务的配额）
   security:
-    enabled: false
+    enabled: false       # 共享令牌关闭；鉴权 = Spring Security 会话 + UploadOwnerAccessControl（AccessControl Bean 覆盖）
 
 logging:
   level:

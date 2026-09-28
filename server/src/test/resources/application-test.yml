@@ -29,6 +29,10 @@ upload-file:
   storage-dir: ./target/test-storage/upload
   metadata-store: memory
   verify-checksum: false
+  # 测试用内存任务存储：关闭组件清理调度与 Redis 租约锁，避免测试依赖 Redis 连接
+  cleanup:
+    enabled: false
+    use-redis-lock: false
   async-merge:
     enabled: true
     thread-pool-size: 2

@@ -23,8 +23,6 @@ import java.util.UUID;
 @Service
 public class AuthService {
 
-    private static final long SESSION_MINUTES = 30;
-
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final RsaKeyHolder rsaKeyHolder;
@@ -47,6 +45,14 @@ public class AuthService {
         this.redis = redis;
         this.logService = logService;
         this.pathProperties = pathProperties;
+    }
+
+    /**
+     * 会话有效期（秒）：统一从 {@code pathfinder.security.session-timeout} 读取（分钟），
+     * 供会话写盘、Cookie 下发与滑动续期共用，消除硬编码 30 的配置漂移。
+     */
+    public long sessionTimeoutSeconds() {
+        return Math.max(1L, pathProperties.getSecurity().getSessionTimeoutMinutes()) * 60L;
     }
 
     @Data
@@ -115,8 +121,9 @@ public class AuthService {
         if (oldToken != null) {
             redis.delete("auth:session:" + oldToken);
         }
-        ttl.setWithExplicitTtl("auth:session:" + token, String.valueOf(user.getId()), SESSION_MINUTES * 60, false);
-        ttl.setWithExplicitTtl(sessionMapKey, token, SESSION_MINUTES * 60, false);
+        long timeout = sessionTimeoutSeconds();
+        ttl.setWithExplicitTtl("auth:session:" + token, String.valueOf(user.getId()), timeout, false);
+        ttl.setWithExplicitTtl(sessionMapKey, token, timeout, false);
 
         user.setLastLoginAt(java.time.LocalDateTime.now());
         userRepository.save(user);
@@ -167,9 +174,10 @@ public class AuthService {
             String key = "auth:session:" + token;
             String v = redis.opsForValue().get(key);
             if (v != null) {
-                redis.expire(key, Duration.ofMinutes(SESSION_MINUTES));
-                // 滑动续期同步刷新会话映射（G6）
-                redis.expire("auth:user:session:" + v, Duration.ofMinutes(SESSION_MINUTES));
+                long timeout = sessionTimeoutSeconds();
+                redis.expire(key, Duration.ofSeconds(timeout));
+                // 滑动续期同步刷新会话映射（G6），TTL 与 session-timeout 配置保持一致
+                redis.expire("auth:user:session:" + v, Duration.ofSeconds(timeout));
             }
         }
     }

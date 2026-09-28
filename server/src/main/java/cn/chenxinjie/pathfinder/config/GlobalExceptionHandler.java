@@ -62,12 +62,15 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * upload-file 组件 rc.4 类型化异常：按稳定状态码映射（400/404/409/507），
+     * upload-file 组件类型化异常：按稳定状态码映射（400/404/409/507），
      * 不透传内部细节，仅记日志供排查。
+     *
+     * <p>rc.6 起 /upload 由组件 Servlet 承载，其错误体由组件自行写出（http.error-body），
+     * 以下映射仅作为「若有组件异常逃逸到 MVC 路径」的防御性兜底。越权（FORBIDDEN）审计已迁至
+     * {@link cn.chenxinjie.pathfinder.security.UploadAccessAuditListener} 的决策点，此处不再重复写审计。</p>
      */
     @ExceptionHandler(cn.chenxinjie.uploadfile.core.exception.AccessDeniedException.class)
     public ResponseEntity<ApiResponse<Void>> handleUploadAccessDenied(cn.chenxinjie.uploadfile.core.exception.AccessDeniedException e) {
-        auditForbidden(SecurityUtil.currentOrNull(), "无权操作该上传任务", null);
         return uploadFileError(403, "无权操作该上传任务", e);
     }
 
@@ -120,8 +123,9 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiResponse<Void>> handleOther(Exception e) {
+        // 500 脱敏（PLAN PF-903）：对外固定文案，异常细节只进服务端日志，避免泄露路径/类名等内部信息
         log.error("unhandled exception", e);
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                .body(ApiResponse.error(500, "系统内部错误：" + e.getMessage()));
+                .body(ApiResponse.error(500, "系统内部错误，请稍后重试"));
     }
 }

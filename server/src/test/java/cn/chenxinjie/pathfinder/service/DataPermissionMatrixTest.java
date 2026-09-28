@@ -219,8 +219,13 @@ class DataPermissionMatrixTest {
         BizException e2 = assertThrows(BizException.class,
                 () -> fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), D1));
         assertEquals(403, e2.getStatus());
-        // 归属人 B 成功移交至公共空间
-        fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), B);
+        // M1：归属人 B（普通 USER）不得将文件公开化 → 403
+        BizException e3 = assertThrows(BizException.class,
+                () -> fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), B));
+        assertEquals(403, e3.getStatus());
+        assertTrue(e3.getMessage().contains("公开化"));
+        // 系统管理员可将财务部文件公开化，A 立即可见
+        fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), AD);
         assertTrue(visibleIds(A).contains(financeDocId), "变为公共空间后 A 立即可见");
         // 部门管理员 D1 将研发部文件移交至本部门子空间（前端组）成功
         fileService.ownerChange(devDocId, new FileService.OwnerChangeForm("DEPT", frontId, null), D1);
@@ -248,7 +253,8 @@ class DataPermissionMatrixTest {
 
     @Test
     void ownerChange_recordsAuditLogWithOriginAndTarget() {
-        fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), B);
+        // M1：普通 USER 无法公开化，改由系统管理员公开化财务部文件并校验审计留痕
+        fileService.ownerChange(financeDocId, new FileService.OwnerChangeForm("PUBLIC", null, null), AD);
         List<OperationLog> logs = operationLogRepository.findAll().stream()
                 .filter(l -> "OWNER_CHANGE".equals(l.getOperationType())
                         && String.valueOf(financeDocId).equals(l.getTargetId()))

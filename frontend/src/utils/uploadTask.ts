@@ -20,9 +20,8 @@ export interface UploadApi {
   confirm(fileId: number): Promise<unknown>;
 }
 
-const authHeaders = (): Record<string, string> => ({
-  Authorization: `Bearer ${localStorage.getItem('pf_token')}`,
-});
+// M2：Token 走 HttpOnly Cookie，跨源上传请求通过 credentials 自动携带，无需前端附加头。
+const fetchOpts = (): RequestInit => ({ credentials: 'include' });
 
 /**
  * 注意：与组件端点（/upload?action=progress|mergeAsync|mergeStatus）交互返回的是
@@ -37,7 +36,7 @@ export const defaultUploadApi: UploadApi = {
       deptId: p.deptId,
     }),
   getProgress: async (identifier) => {
-    const resp = await fetch(`/upload?action=progress&identifier=${identifier}`, { headers: authHeaders() });
+    const resp = await fetch(`/upload?action=progress&identifier=${identifier}`, fetchOpts());
     if (!resp.ok) {
       throw new Error(`查询进度失败（HTTP ${resp.status}）`);
     }
@@ -46,8 +45,9 @@ export const defaultUploadApi: UploadApi = {
   uploadChunk: async (form) => {
     const resp = await fetch('/upload', {
       method: 'POST',
-      headers: authHeaders(),
+      headers: { Accept: 'application/json' },
       body: form,
+      ...fetchOpts(),
     });
     if (!resp.ok) {
       const body = await resp.text();
@@ -58,7 +58,7 @@ export const defaultUploadApi: UploadApi = {
   mergeAsync: async (identifier) => {
     const resp = await fetch(`/upload?action=mergeAsync&identifier=${identifier}`, {
       method: 'POST',
-      headers: authHeaders(),
+      ...fetchOpts(),
     });
     if (!resp.ok) {
       throw new Error(`提交合并失败（HTTP ${resp.status}）`);
@@ -66,7 +66,7 @@ export const defaultUploadApi: UploadApi = {
     return resp.json();
   },
   mergeStatus: async (identifier) => {
-    const resp = await fetch(`/upload?action=mergeStatus&identifier=${identifier}`, { headers: authHeaders() });
+    const resp = await fetch(`/upload?action=mergeStatus&identifier=${identifier}`, fetchOpts());
     if (!resp.ok) {
       throw new Error(`查询合并状态失败（HTTP ${resp.status}）`);
     }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button, Form, Input, Typography, message, Card } from 'antd';
 import { UserOutlined, LockOutlined, SafetyOutlined } from '@ant-design/icons';
-import { getToken, setToken, get, post } from '../api/client';
+import { get, post } from '../api/client';
 import { encryptPassword } from '../utils/crypto';
 import type { AuthUser, Captcha } from '../api/types';
 
@@ -25,26 +25,25 @@ export default function Login() {
   }, []);
 
   useEffect(() => {
-    if (getToken()) {
-      get<AuthUser>('/api/auth/me')
-        .then((u) => navigate(u.mustChangePassword === 1 ? '/changePassword' : '/'))
-        .catch(() => {
-          /* token 失效留在登录页 */
-        });
-    }
+    get<AuthUser>('/api/auth/me')
+      .then((u) => {
+        if (u) navigate(u.mustChangePassword === 1 ? '/changePassword' : '/');
+      })
+      .catch(() => {
+        /* 未登录 / Cookie 失效，停留在登录页 */
+      });
   }, [navigate]);
 
   const onFinish = async (values: { username: string; password: string; captcha: string }) => {
     setLoading(true);
     try {
       const encrypted = await encryptPassword(values.password);
-      const data = await post<{ token: string }>('/api/login', {
+      await post<void>('/api/login', {
         username: values.username,
         encryptedPassword: encrypted,
         captchaUuid: captcha?.uuid,
         captchaCode: values.captcha,
       });
-      setToken(data.token);
       const me = await get<AuthUser>('/api/auth/me');
       message.success('登录成功');
       navigate(me.mustChangePassword === 1 ? '/changePassword' : '/');

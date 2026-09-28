@@ -6,6 +6,7 @@ import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.repository.OperationLogRepository;
 import cn.chenxinjie.pathfinder.security.AuthUser;
 import cn.chenxinjie.pathfinder.config.PathProperties;
+import cn.chenxinjie.pathfinder.util.SqlLike;
 import jakarta.persistence.criteria.Predicate;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -38,9 +39,20 @@ public class LogService {
 
     public void record(AuthUser operator, String type, String targetType, String targetId,
                        String targetName, String detail, boolean success) {
+        record(operator, type, targetType, targetId, targetName, detail, success, null, null);
+    }
+
+    /**
+     * 带客户端信息的审计（rc.8 AccessContext：method/uri/remoteAddr/userAgent）。
+     * 供组件 Servlet 路径的越权审计复用（{@code UploadAccessAuditListener}）。
+     */
+    public void record(AuthUser operator, String type, String targetType, String targetId,
+                       String targetName, String detail, boolean success, String ip, String userAgent) {
         OperationLog log = new OperationLog();
         log.setOperatorId(operator == null ? null : operator.getId());
         log.setOperatorName(operator == null ? "anonymous" : operator.getUsername());
+        log.setIp(truncate(ip, 64));
+        log.setUserAgent(truncate(userAgent, 255));
         log.setOperationType(type);
         log.setTargetType(targetType);
         log.setTargetId(targetId);
@@ -67,7 +79,7 @@ public class LogService {
         Specification<OperationLog> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
             if (operatorName != null && !operatorName.isBlank()) {
-                ps.add(cb.like(root.get("operatorName"), "%" + operatorName + "%"));
+                ps.add(cb.like(root.get("operatorName"), SqlLike.containsPattern(operatorName), '\\'));
             }
             if (operationType != null && !operationType.isBlank()) {
                 ps.add(cb.equal(root.get("operationType"), operationType));
@@ -117,6 +129,13 @@ public class LogService {
         }
         operationLogRepository.deleteAll(logs);
         return logs.size();
+    }
+
+    private String truncate(String s, int max) {
+        if (s == null || s.length() <= max) {
+            return s;
+        }
+        return s.substring(0, max);
     }
 
     private String csv(String s) {

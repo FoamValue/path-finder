@@ -71,6 +71,13 @@ public class RsaKeyHolder {
             java.nio.file.Files.createDirectories(f.getParent());
             java.nio.file.Files.write(f,
                     Base64.getEncoder().encodeToString(pair.getPrivate().getEncoded()).getBytes());
+            // M4 修复：私钥文件权限收紧为 600（rw-------），防止被同机其它系统用户读取
+            try {
+                java.nio.file.Files.setPosixFilePermissions(f,
+                        java.nio.file.attribute.PosixFilePermissions.fromString("rw-------"));
+            } catch (UnsupportedOperationException | java.io.IOException ignore) {
+                // 非 POSIX 文件系统（如 Windows）交由 ACL/宿主策略管理
+            }
         } catch (Exception ignore) {
             // 持久化失败不阻断启动（仅影响重启沿用）
         }

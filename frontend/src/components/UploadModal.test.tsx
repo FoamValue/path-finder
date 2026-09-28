@@ -4,7 +4,7 @@ import UploadModal from '../components/UploadModal';
 import type { DeptNode } from '../api/types';
 
 const mocks = vi.hoisted(() => ({
-  runUpload: vi.fn(async () => undefined),
+  runUpload: vi.fn(async (..._args: unknown[]) => undefined),
   messageSuccess: vi.fn(),
   messageWarning: vi.fn(),
 }));

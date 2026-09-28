@@ -1,18 +1,10 @@
 import type { ApiResponse } from './types';
 import { logger } from '../utils/logger';
 
-const TOKEN_KEY = 'pf_token';
-
-export function getToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
-
-export function setToken(token: string): void {
-  localStorage.setItem(TOKEN_KEY, token);
-}
-
+// M2：登录会话由后端通过 HttpOnly + SameSite Cookie（pf_token）下发，前端 JS 无法读取，
+// 因此不再在 localStorage 存放 Token，也不附加 Authorization 头，仅凭 Cookie 完成鉴权。
 export function clearToken(): void {
-  localStorage.removeItem(TOKEN_KEY);
+  // HttpOnly Cookie 由服务端在登出/过期时清除，前端无法也无须操作。
 }
 
 export class ApiError extends Error {
@@ -64,10 +56,6 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   const headers: Record<string, string> = {
     ...(options.headers as Record<string, string>),
   };
-  const token = getToken();
-  if (token) {
-    headers['Authorization'] = `Bearer ${token}`;
-  }
   let body = options.body;
   if (body && typeof body === 'object' && !(body instanceof FormData)) {
     headers['Content-Type'] = 'application/json';
@@ -76,7 +64,7 @@ export async function request<T>(url: string, options: RequestInit = {}): Promis
   const method = options.method ?? 'GET';
   logger.info(`HTTP ${method} -> ${url}`);
   try {
-    const resp = await fetch(url, { ...options, headers, body });
+    const resp = await fetch(url, { ...options, headers, body, credentials: 'include' });
     return await handleResponse<T>(resp, url);
   } catch (e) {
     // 业务错误（ApiError）已携带具体原因，直接透传；仅真正的网络异常才包装提示

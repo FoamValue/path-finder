@@ -1,5 +1,6 @@
 package cn.chenxinjie.pathfinder.security;
 
+import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.config.SecurityConfig;
 import cn.chenxinjie.pathfinder.entity.Role;
 import cn.chenxinjie.pathfinder.entity.User;
@@ -39,7 +40,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * 不依赖 MySQL/Redis 实例。
  */
 @WebMvcTest(controllers = EndpointSecurityMatrixTest.TestApi.class)
-@Import({SecurityConfig.class, EndpointSecurityMatrixTest.TestApi.class})
+@Import({SecurityConfig.class, PathProperties.class, EndpointSecurityMatrixTest.TestApi.class})
 class EndpointSecurityMatrixTest {
 
     @Autowired

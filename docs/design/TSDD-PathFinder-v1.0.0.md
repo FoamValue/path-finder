@@ -18,7 +18,7 @@
 ### 1.2 设计原则
 
 1. **分层清晰**：Controller → Service → Repository 严格分层，禁止跨层调用。
-2. **贴合组件**：大文件分片上传/断点续传/Range 下载一律复用 `cn.chenxinjie:upload-file:1.0.0-rc.4`，不重复造轮子。
+2. **贴合组件**：大文件分片上传/断点续传/Range 下载一律复用 `cn.chenxinjie:upload-file:1.0.0-rc.8`，不重复造轮子。
 3. **数据权限前置**：所有文件接口统一走"可见性过滤"，服务端强制校验，前端仅做展示层。
 4. **安全纵深**：验证码 → 传输加密 → 凭证校验 → 失败锁定 → 单会话踢出 → 越权拦截。
 5. **可观测性**：关键操作全量审计落库。
@@ -294,7 +294,7 @@ CREATE TABLE file_recycle_bin (
 
 | GET | `/api/storage/info` | 总容量/已用/剩余/使用率 |
 
-### 4.7 大文件传输上传端点（PathFinder `UploadController` 按组件契约实现，会话鉴权前置）
+### 4.7 大文件传输上传端点（组件 `UploadServlet`，rc.6 迁移 / rc.8 starter 装配，会话鉴权前置）
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
@@ -304,9 +304,9 @@ CREATE TABLE file_recycle_bin (
 | POST | `/upload?action=mergeAsync&identifier=` | 异步合并（202） |
 | GET | `/upload?action=mergeStatus&identifier=` | 异步合并状态（NONE/PENDING/RUNNING/SUCCEEDED/FAILED） |
 | POST | `/upload?action=cancel&identifier=` | 取消任务并回收分片/未入库合并产物（**rc.4**；confirm 入库后由服务端显式调用，见 §6.3） |
-| GET | `/download?identifier=xxx` | 组件契约下载端点（starter/servlet 装配时由组件注册；**core 手工装配下本工程未暴露**）：仅用于未入库临时文件/联调兜底，v1.0 不承载业务下载（业务下载见 4.4 `/api/file/download/{token}`） |
+| GET | `/download?identifier=xxx` | 组件下载端点；rc.6 `endpoint.download-enabled` **默认关闭**（本工程未开启）：业务下载走 4.4 `/api/file/download/{token}`，不暴露「已合并未确认」临时产物 |
 
-> 鉴权策略：`/api/**`、`/upload` 纳入 Spring Security 会话鉴权矩阵（见 §5.1）；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。`/upload` 各 action 由 `UploadController` 基于 `upload-file-core` 手工装配实现（见 §6.1/§11），前端协议与组件 README 完全一致；组件 `AccessControl` 注入归属校验（`UploadOwnerAccessControl`）：所有 action 仅允许该 `file_info.upload_identifier` 的归属人（creator）或 ADMIN 操作，拿到 identifier 无法越权 merge/cancel 他人任务（§9.3 → 403）。
+> 鉴权策略：`/api/**`、`/upload` 纳入 Spring Security 会话鉴权矩阵（见 §5.1）；`identifier` 由 `/api/file/uploadTicket` 签发，不对外暴露真实路径。`/upload` 由组件 `UploadServlet`（`upload-file-spring-boot-starter-jakarta` 自动装配）承载（见 §6.1/§11），前端协议与组件 README 完全一致；组件 `AccessControl` 注入归属校验（`UploadOwnerAccessControl` 覆写 rc.6 `decide()`）：所有 action 仅允许该 `file_info.upload_identifier` 的归属人（creator）或 ADMIN 操作，拿到 identifier 无法越权 merge/cancel 他人任务（§9.3 → 403，由 `UploadAccessAuditListener` 落 FORBIDDEN 审计）。
 
 ---
 
@@ -316,10 +316,8 @@ CREATE TABLE file_recycle_bin (
 
 ```
 Request → Spring Security FilterChain
-  ├─ CaptchaFilter       （/login 前置，校验 auth:captcha 一次性）
-  ├─ UploadAuthFilter    （/upload：校验会话 Token + identifier 归属）
-  ├─ JwtSessionFilter    （会话校验，覆盖 /api/**）
-  └─ 授权判定            （@PreAuthorize 角色 + FileService 数据权限）
+  ├─ TokenAuthFilter     （无状态会话 Token 校验，覆盖 /api/**、/upload、/download）
+  └─ 授权判定            （@PreAuthorize 角色 + FileService 数据权限 + 上传归属 AccessControl）
 ```
 
 **端点鉴权矩阵（SecurityConfig 生效）**：
@@ -327,8 +325,9 @@ Request → Spring Security FilterChain
 | 端点 | 鉴权 |
 |---|---|
 | `/api/captcha`、`/api/publicKey`、`/api/login`、`/error`、静态资源 | 放行（匿名） |
-| `/upload`（组件） | 需会话 + identifier 归属校验（UploadAuthFilter） |
-| `/api/**`（含 logout/changePassword） | 需会话（JwtSessionFilter） |
+| `/upload`（组件 Servlet） | 需会话 + identifier 归属校验（`UploadOwnerAccessControl.decide()`，越权 403） |
+| `/download`（组件 Servlet） | rc.6 `endpoint.download-enabled=false` 默认不注册 |
+| `/api/**`（含 logout/changePassword） | 需会话（TokenAuthFilter） |
 | `mustChangePassword=1` 的用户 | 仅放行 `/api/changePassword`、`/api/logout`、`/api/auth/me`，其余接口 403 |
 
 > 说明：认证端点统一收敛到 `/api/` 前缀（`/api/login`、`/api/captcha`、`/api/changePassword` 等），与前端 SPA 路由（`/login` 页面等）解耦，避免 vite/nginx 将页面请求误代理到后端；`/api/**` 全部纳入会话校验，避免认证空档。
@@ -374,24 +373,40 @@ Request → Spring Security FilterChain
 
 ### 6.1 依赖
 
-**v1.0.0 实际坐标（rc.4）**：starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容（见 §11 风险预案与 README「已知说明」），故生产代码不引 starter，改为 **`upload-file-core` 手动装配 + `upload-file-store-redis`**，对外 HTTP 契约与组件完全一致：
+**v1.0.0 实际坐标（rc.8，BOM 统一版本）**：rc.3 时代 starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容（见 §11 风险预案与 README「已知说明」）；rc.5 起组件新增 jakarta 版 starter/servlet，但经 [ADR-001](ADR-001-upload-file-starter-jakarta.md) 评估暂未启用；rc.6 组件补齐商业化 HTTP 层可控接入（`endpoint`/`http`/`multipart` 开关、`AccessControl.decide()`、`AccessControlListener`、`UploadErrorRenderer`），ADR-001 撤销条件满足，故生产代码**迁移到 `upload-file-spring-boot-starter-jakarta` + `upload-file-store-redis`**；rc.7 收口存储正确性与扩展点一致性（Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`）；rc.8（GA 前最后一批）新增 `upload-file-bom`、配额自动对账、分布式锁续租、审计上下文 `AccessContext`、starter 自动装配 `TrustedUploadService`。对外 HTTP 契约与组件完全一致（执行清单见 [UPGRADE](UPGRADE-upload-file-starter-jakarta.md)）：
 
 ```xml
+<dependencyManagement>
+  <dependencies>
+    <dependency>
+      <groupId>cn.chenxinjie</groupId>
+      <artifactId>upload-file-bom</artifactId>
+      <version>1.0.0-rc.8</version>
+      <type>pom</type>
+      <scope>import</scope>
+    </dependency>
+  </dependencies>
+</dependencyManagement>
+<!-- 版本由 BOM 管理；store-redis 在 starter 中为 optional，需显式声明 -->
 <dependency>
   <groupId>cn.chenxinjie</groupId>
-  <artifactId>upload-file-core</artifactId>
-  <version>1.0.0-rc.4</version>
+  <artifactId>upload-file-spring-boot-starter-jakarta</artifactId>
 </dependency>
 <dependency>
   <groupId>cn.chenxinjie</groupId>
   <artifactId>upload-file-store-redis</artifactId>
-  <version>1.0.0-rc.4</version>
 </dependency>
 ```
 
 > **rc.4 相对 rc.3 只增不删**，本系统落地采用的增量契约：`getTask(identifier)` 稳定读（confirm 经 `UploadTask.finalPath` 定位合并产物）、`cancelUpload(identifier)` 显式取消/回收、`UploadErrorCode` 稳定错误语义（§9.3）。原 rc.3 调用用法无需改动。
 >
-> **组件能力复用清单（core 手工装配下仍可用的组件级能力）**：`AccessControl` SPI（任务级归属授权，替代 PermitAll，见 §4.7/§5）、`StorageCleanupService`（过期任务 + 孤儿分片/合并目录回收，见 §6.2/§8.2）、`setMaxTotalBytes` 全局容量配额（`quota.max-bytes`，超限 507）、`ResumableDownloadService`/`DownloadRange`（下载语义，本工程 Range 断点下载自行承载，见 §6.4）。
+> **rc.5 相对 rc.4**：core/store 逻辑零改动（仅补测试），新增 jakarta 二件套与 Boot 4 demo。
+>
+> **rc.6 相对 rc.5（本工程迁移采用）**：`endpoint.*`（`upload-enabled`/`download-enabled`，后者默认 false）、`http.*`（`error-body`/`cancel-not-found-status`）、`multipart.strategy`；`AccessControl.decide()` 返回 `AccessDecision`（越权可 `deny(403)`）；`AccessControlListener` 决策审计；`UploadErrorRenderer`/`UploadErrorCodes` 稳定错误码；受信读重载 `getTask(id, token)`。本工程删除 `UploadFileConfig`/`UploadController`，由 starter 装配 + `UploadServlet` 承载 `/upload`，`/download` 保持默认关闭。
+>
+> **rc.7 相对 rc.6（本工程升级采用）**：`RedisTaskStore` 索引改 `ZSET` + TTL 惰性修剪（修复索引泄漏）与 `list()` 单次 `MGET`；starter 消费宿主 `UploadErrorRenderer` Bean；`multipart.strategy=component` 未显式设置时按 `max-chunk-size`/`max-file-size` 推导有界上限；新增 `upload-file.lock.identifier-lock=local|redis`（分布式 `IdentifierLockProvider`）、`upload-file.quota.store=task-store|redis`（原子 `QuotaStore`）、受信读门面 `TrustedUploadService`（`getTask(String)` 等旧读方法标 `@Deprecated`）、`AbstractAccessControl` 基座、`security.enabled=false` 且无宿主 AccessControl Bean 时启动 WARN。本工程新增 `UploadTrustedConfig`，`FileService` 改用 `TrustedUploadService.getTask`。
+>
+> **rc.8 相对 rc.7（本工程升级采用，GA 前最后一批）**：新增 `upload-file-bom`（统一版本）；`quota.store=redis` 启动期 `QuotaStore.reconcile(TaskStore)` 自动对账 + 孤儿清理回收「已合并未确认」配额；分布式 identifier 锁按 `lock.renew-interval`（默认 `ttl/3`）持有期续租；`RedisTaskStore` 索引迁移原子化、`list()` 分批 `MGET`；审计上下文 `AccessContext{method,uri,remoteAddr,userAgent}` + `AccessContextHolder`，`AccessControlListener` 新增 6 参 `default` 重载（核心服务调用，5 参实现零改动）；`observability.access-log-scope=task|deny|all`（默认 `task` 降噪）；starter 自动装配 `TrustedUploadService`（`@ConditionalOnMissingBean`；`trusted-upload-service.enabled=false` 可关闭）。本工程删除 `UploadTrustedConfig`（改用 starter 自动装配），`UploadAccessAuditListener` 覆写 6 参重载写入 method/URI/IP/UA。
 
 ### 6.2 配置（`application.yml`）
 
@@ -410,6 +425,14 @@ upload-file:
   max-request-size: 10485760
   quota:
     max-bytes: 0                                # 全局容量配额，0=关闭；超限 507（组件估算：进行中声明大小+已合并产物）
+  endpoint:                                     # rc.6：端点注册开关
+    enabled: true
+    upload-enabled: true                        # /upload 由组件 UploadServlet 承载
+    download-enabled: false                     # /download 默认关闭（最小暴露；业务下载走 /api/file/download/{token}）
+  http:
+    error-body: legacy                          # 组件端点模型；前端仅消费状态码/文本，兼容
+  multipart:
+    strategy: component                         # 以 max-chunk-size/max-request-size 作 Servlet @MultipartConfig
   async-merge:
     enabled: true
     thread-pool-size: 2
@@ -419,12 +442,17 @@ upload-file:
     interval: 1h
     task-ttl: 24h
     orphan-enabled: true
-    use-redis-lock: true                        # 多实例部署启用；单实例不使用
+    use-redis-lock: true                        # rc.6 起由 starter 消费：RedisCleanupLock 租约锁
+  observability:
+    access-log: false                           # 越权审计由 UploadAccessAuditListener 落库；此开关仅额外输出访问日志
+    access-log-scope: task                      # rc.8：access-log=true 时的降噪档（task=deny+任务级，all=逐决策，deny=仅拒绝）
+  trusted-upload-service:
+    enabled: true                               # rc.8：starter 自动装配 TrustedUploadService（受信读门面，供 FileService confirm）
   security:
     enabled: false                              # 由 PathFinder 会话鉴权 + AccessControl 归属授权替代共享令牌
 ```
 
-> **手工装配落地说明（rc.4）**：`UploadFileConfig` 以 `@Value` 程序化读取 `storage-dir`、`metadata-store`（redis/memory/file）、`redis.*`、`verify-checksum`、`max-chunk-size`、`max-file-size`、`quota.max-bytes`、`merge.fsync`/`merge.atomic`，并据此接线组件 `StorageCleanupService`（消费 `cleanup.enabled/run-on-startup/interval/task-ttl/orphan-enabled`，与上传共用 `IdentifierLock`，见 §8.2）。以下键为 starter 专属，core 手工装配下**不消费**：`async-merge.enabled`（线程池在 `UploadFileConfig` 固定 2 线程）、`max-request-size`、`security.*`（鉴权由 Spring Security + 归属 AccessControl 承担）、`cleanup.use-redis-lock`（单实例部署）。
+> **starter 装配说明（rc.8）**：`upload-file-spring-boot-starter-jakarta` 自动装配 `TaskStore`（`metadata-store=redis` + `redis.*`）、`ChunkStorage`、`IdentifierLock`、`IdentifierLockProvider`、`QuotaStore`、`ResumableUploadService`、`StorageCleanupService`、`ResumableDownloadService`、`TrustedUploadService`、异步合并线程池（`async-merge.*`）、`RedisCleanupLock`（`cleanup.use-redis-lock=true`），并注册 `UploadServlet`（`endpoint.upload-enabled=true`）。本工程以 `UploadOwnerAccessControl`（`AccessControl` Bean）与 `UploadAccessAuditListener`（`AccessControlListener` Bean）覆盖组件默认实现；`security.enabled=false` 时组件默认 AccessControl 回退 PermitAll，但被本项目 Bean 覆盖，端点不会裸奔。
 
 ### 6.3 上传流程时序（对应 F3/F8）
 
@@ -535,19 +563,21 @@ upload-file:
 
 ### 9.3 异常与错误码
 
-`GlobalExceptionHandler` 统一处理：`BusinessException`（400/403/404）、`AccessDeniedException`（403），以及组件 rc.4 类型化异常——按 `UploadErrorCode.getHttpStatusCode()` 映射稳定状态码，**不透传内部细节**（仅 warn 日志留痕）：
+rc.6 起 `/upload` 由组件 `UploadServlet` 承载，其失败响应体由组件按 `upload-file.http.error-body` 写出（本工程取 `legacy`，组件端点模型）；`GlobalExceptionHandler` 仍统一处理 MVC 路径的 `BusinessException`（400/403/404）、Spring Security `AccessDeniedException`（403），以及组件类型化异常（防御性兜底，按 `UploadErrorCode.getHttpStatusCode()` 映射，**不透传内部细节**）：
 
 | 组件异常（rc.4 类型化） | HTTP | 语义 |
 |---|---|---|
 | `UploadValidationException` | 400 | 分片参数非法、元数据不一致、大小超限、合并缺分片 |
 | `ChecksumMismatchException` | 400 | 分片 MD5 不一致，客户端自动重传该分片 |
-| `AccessDeniedException` | 403 | 任务归属越权（`UploadOwnerAccessControl` 拒绝非归属人/非管理员操作） |
+| `AccessDeniedException` | 401/403 | 任务归属越权；rc.6 由 `UploadOwnerAccessControl.decide()` 返回 `AccessDecision.deny(403)`，未认证为 401 |
 | `UploadTaskNotFoundException` | 404 | 任务不存在或已过期，重新触发上传/`mergeAsync` |
 | `UploadMergeConflictException` | 409 | 上传/合并进行中（含异步合并期间 `cancel`），稍后再试 |
 | `QuotaExceededException` | 507 | 存储配额不足 |
 | 其余 | 500 | 服务端失败，仅日志 |
 
-前端依据响应 `code` 映射（400/401/404/409/416/507）与业务码做友好提示。
+越权（403）审计：rc.6 由 `UploadAccessAuditListener`（`AccessControlListener`）在组件决策点写 `FORBIDDEN success=0`，Servlet 与 MVC 路径均留痕；rc.8 覆写 6 参重载，审计行补齐 `method/uri/remoteAddr/userAgent`（`AccessContext`）。
+
+前端依据 HTTP 状态码与文本做友好提示（`/upload` 组件端点成功体字段不变，错误体仅读状态码/文本）。
 
 ### 9.4 审计
 
@@ -574,7 +604,7 @@ upload-file:
 
 | 项 | 说明 | 对策 |
 |---|---|---|
-| 组件与 Spring Boot 4.1.1 兼容 | 官方适配 Spring Boot 2.x（starter/servlet 依赖 `javax.servlet`，jakarta 不兼容） | 已落地：S0 POC 确认后采用 `upload-file-core` 手动装配（`UploadFileConfig`，接口契约不变）；2026-09 随组件升级至 **`1.0.0-rc.4`** 并试点 `getTask`/`cancelUpload`/`UploadErrorCode`（§6.3/§9.3，详见 PLAN §12） |
+| 组件与 Spring Boot 4.1.1 兼容 | 官方早期适配 Spring Boot 2.x（javax starter/servlet 与 jakarta 不兼容）；rc.5 起提供 jakarta 版 starter | 已落地：rc.3~rc.5 采用 `upload-file-core` 手动装配；2026-09 组件 **`rc.6`** 补齐可控 HTTP 层接入后，按 ADR-001 撤销条件**迁移到 `upload-file-spring-boot-starter-jakarta`**（删除 `UploadFileConfig`/`UploadController`，`/upload` 由 `UploadServlet` 承载，`/download` 默认关闭）；随后 **`rc.7`** 收口存储正确性（Redis 索引泄漏/N+1）与扩展点一致性（`UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`），**`rc.8`** 收口 GA 前最后一批（`upload-file-bom`、配额自动对账、分布式锁续租、`AccessContext` 审计上下文、starter 自动装配 `TrustedUploadService`），契约不变（§6.1，UPGRADE，PLAN §14/§15/§16） |
 | 组件产物 JDK8 字节码 | 与 JDK 26 运行兼容 | POC 阶段验证 |
 | Redis 9 + Jedis 兼容 | 组件 store-redis 基于 Jedis | POC 阶段验证，失败切 `metadata-store=file` |
 | 大文件 confirm 原子性 | 移动+元数据必须一致 | 同事务 + 残留清理兜底 |

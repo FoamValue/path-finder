@@ -7,7 +7,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 ## 功能特性
 
 - 🔐 **安全登录**：图片验证码 + 前端 RSA 加密传输密码 + BCrypt 存储；连续失败 5 次锁定 10 分钟；多登录踢出（单会话）；会话超时自动登出；首次登录强制改密
-- 📂 **大文件传输**：基于 `cn.chenxinjie:upload-file:1.0.0-rc.4` 分片上传 / 断点续传 / 秒传 / 分片 MD5 校验 / 异步合并 / Range 断点下载
+- 📂 **大文件传输**：基于 `cn.chenxinjie:upload-file:1.0.0-rc.8` 分片上传 / 断点续传 / 秒传 / 分片 MD5 校验 / 异步合并 / Range 断点下载
 - 🗂 **数据权限**：个人空间 / 部门空间 / 公共空间三级归属，部门树可见性继承，服务端强制过滤
 - 🔍 **高效检索**：后端真分页（数据库层 `LIMIT/OFFSET`），文件名模糊搜索
 - ♻️ **软删除**：回收站保留 30 天，支持恢复与物理清除
@@ -24,7 +24,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 | 后端 | JDK 26 · Spring Boot 4.1.1 · Spring Security · Spring Data JPA · Jackson 3 |
 | 缓存 | Redis 9（会话 / 验证码 / 锁定 / 元数据缓存，TTL 固定基础值 + 随机抖动防雪崩） |
 | 数据库 | MySQL 8 |
-| 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.4`（core 手动装配：confirm 经 `getTask().finalPath` 定位合并产物、入库后 `cancelUpload` 显式回收、任务级归属 `AccessControl`、`StorageCleanupService` 定时回收、全局配额 `quota.max-bytes` 可选） |
+| 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.8`（rc.6 迁移到官方 jakarta HTTP 层：`upload-file-spring-boot-starter-jakarta` 自动装配 + 组件 `UploadServlet` 承载 `/upload`；confirm 经受信读 `TrustedUploadService.getTask().finalPath` 定位合并产物、入库后 `cancelUpload` 显式回收、任务级归属 `AccessControl.decide()`（越权 403）、`AccessControlListener` 越权审计（rc.8 带 method/URI/IP/UA 审计上下文）、`StorageCleanupService` 定时回收、全局配额 `quota.max-bytes` 可选；`/download` 默认关闭，业务下载走 `/api/file/download/{token}`。rc.7 修复 Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认；rc.8 新增 BOM 统一版本、`quota.store=redis` 启动自动对账 + 清理回收配额、分布式锁续租、`RedisTaskStore` 索引迁移原子化/`list()` 分批 MGET、`AccessContext` 审计上下文、`observability.access-log-scope`，并自动装配 `TrustedUploadService`。见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) / [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md)） |
 | 部署 | Docker Compose · nginx:alpine · TLS |
 
 ## 目录结构
@@ -33,12 +33,12 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决「�
 path-finder/
 ├── server/                    # 后端（Spring Boot Maven 单模块，包 cn.chenxinjie.pathfinder）
 │   └── src/main/java/cn/chenxinjie/pathfinder/
-│       ├── config/            # 安全/Redis/上传组件/异常/调度器/Seed
-│       ├── controller/        # auth/user/dept/file/recycle/log/storage/upload
+│       ├── config/            # 安全/Redis/异常/调度器/Seed（上传组件由 starter 自动装配）
+│       ├── controller/        # auth/user/dept/file/recycle/log/storage
 │       ├── service/           # 业务服务与数据权限判定
 │       ├── repository/        # JPA Repository（真分页）
 │       ├── entity/            # JPA 实体（含 ts 字段只读映射）
-│       ├── security/          # Token 认证过滤器 / 当前用户上下文
+│       ├── security/          # Token 认证过滤器 / 当前用户上下文 / 上传归属授权与审计
 │       └── util/              # RSA / 验证码 / Redis TTL 策略 / 路径工具
 ├── frontend/                  # 前端（Vite + React + AntD）
 │   └── src/
@@ -173,11 +173,14 @@ E2E 覆盖：登录页冒烟、TC-E2E-001 全链路（上传/搜索/下载/归�
 | [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | 敏捷迭代计划（Sprint / 任务卡 / DoD） |
 | [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | 测试用例（110+，含数据权限矩阵） |
 | [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | 生产上线基准审查与修订记录 |
-| [CHANGELOG](CHANGELOG.md) | 变更记录（含 `upload-file` rc.3 → rc.4 升级条目） |
+| [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) | 决策记录：组件 jakarta starter 迁移（rc.5 暂不迁移 → rc.6 撤销条件触发后**已迁移**） |
+| [UPGRADE starter](docs/design/UPGRADE-upload-file-starter-jakarta.md) | rc.6 迁移执行清单：坐标替换 / 删改（C1~C8）/ 契约差异 / 审计迁移 / 验收与回滚（**已执行**） |
+| [CHANGELOG](CHANGELOG.md) | 变更记录（含 `upload-file` 组件 rc.3 → rc.4 → rc.5 → rc.6 → rc.7 → rc.8 升级条目） |
 
 ## 已知说明
 
-- 大文件组件 `upload-file-spring-boot-starter` 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容，故采用组件 `upload-file-core` 手动装配（TSDD §11 风险预案，`1.0.0-rc.4`），对外接口契约不变。
+- 大文件组件 `cn.chenxinjie:upload-file` 早期 starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容，rc.3~rc.5 采用 `upload-file-core` 手工装配（TSDD §11 风险预案）。rc.6 组件补齐商业化 HTTP 层可控接入（`endpoint`/`http`/`multipart` 开关、`AccessControl.decide()`、`AccessControlListener`、`UploadErrorRenderer`），本工程据此**迁移到 `upload-file-spring-boot-starter-jakarta`**：删除 `UploadFileConfig`/`UploadController`，`/upload` 由组件 `UploadServlet` 承载，`/download` 默认关闭（最小暴露），接口契约不变。rc.7 进一步收口存储正确性与扩展点一致性（Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`）；rc.8 收口 GA 前的最后一批能力（`upload-file-bom`、`quota.store=redis` 启动自动对账 + 清理回收配额、分布式 identifier 锁持有期续租、`RedisTaskStore` 索引迁移原子化与 `list()` 分批 MGET、`AccessContext`/`AccessContextHolder` 审计上下文与监听器 6 参重载、`observability.access-log-scope` 降噪、starter 自动装配 `TrustedUploadService`）。本工程已升级并适配（`server/pom.xml` 经 `upload-file-bom:1.0.0-rc.8` 统一版本；移除手写 `UploadTrustedConfig`；越权审计改用 `AccessContext` 记录 method/URI/IP/UA，详见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) / [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md)）。
+- 组件 `/upload` 失败响应体为组件端点模型（`http.error-body=legacy`），前端仅消费 HTTP 状态码与文本，兼容；越权统一返回 403。
 - v1.0.0 为单机部署形态（PRD 明确非目标），多实例与在线预览/全文检索见版本规划。
 
 ## License

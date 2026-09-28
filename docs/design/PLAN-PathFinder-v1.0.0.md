@@ -51,7 +51,7 @@
 | PF-001 | 后端 Maven 骨架（Spring Boot 4.1.1，JDK 26），集成 Security/JPA/Redis；`BaseEntity`、全局异常、统一响应 | 1d | `mvn spring-boot:run` 启动；健康检查通过 |
 | PF-002 | 前端脚手架（Ant Design Pro / UmiJS + TS strict），路由 + `access.ts` 骨架，登录页占位 | 1d | `npm run dev` 可访问 |
 | PF-003 | 数据库初始化：PRD/TSDD 全部 DDL + Flyway（含 `V2__seed.sql`：四角色、根部门、首个 `admin` 账号，初始密码首登强制改密，见 TSDD 3.4） | 0.5d | 建表脚本在 MySQL 8 可执行；Seed 后 `admin` 可登录且强制改密 |
-| PF-004 | **组件 POC**：引入 `cn.chenxinjie:upload-file:1.0.0-rc.4`（starter + store-redis），验证 `/upload /download` 与 Spring Boot 4.1.1 / Redis 9 / JDK 26 兼容 | 2d | 分片上传/断点续传/Range 下载 POC 通过；产出集成结论；失败则给出降级方案（TSDD 11） |
+| PF-004 | **组件 POC**：引入 `cn.chenxinjie:upload-file:1.0.0-rc.5`（starter + store-redis），验证 `/upload /download` 与 Spring Boot 4.1.1 / Redis 9 / JDK 26 兼容 | 2d | 分片上传/断点续传/Range 下载 POC 通过；产出集成结论；失败则给出降级方案（TSDD 11） |
 | PF-005 | CI 流水线：`main` 分支 PR 触发 build + test + 覆盖率门禁（JaCoCo/Jest）+ Checkstyle/ESLint | 1d | PR 自动运行且门禁生效 |
 
 **Sprint 0 评审点**：组件兼容性结论（Go/No-Go 或降级方案）；骨架可运行。
@@ -146,7 +146,7 @@
 
 | 依赖 | 提供方 | 就绪点 |
 |---|---|---|
-| `cn.chenxinjie:upload-file:1.0.0-rc.4` 本地 mvn 仓库（`upload-file-core` + `upload-file-store-redis`，随组件仓库同版本推进） | 组件仓库 | S0 前（已就绪）；rc.4 升级补丁见 §12 |
+| `cn.chenxinjie:upload-file:1.0.0-rc.5` 本地 mvn 仓库（`upload-file-core` + `upload-file-store-redis`，随组件仓库同版本推进） | 组件仓库 | S0 前（已就绪）；rc.4 升级补丁见 §12、rc.5 升级补丁见 §13 |
 | 组件集成结论 | PF-004 | S0 末 |
 | 权限矩阵冻结 | 评审 | S1 末 |
 | 数据 DDL | PF-003 | S0 末 |
@@ -168,3 +168,89 @@
 | PF-506 | 回归：`FileUploadFlowTest` 增补 confirm/取消用例；新增 `UploadFileErrorMappingTest`（类型化异常 → HTTP 状态码）；E2E 全链路复跑 | TESTCASES / §9 测试策略 | 已完成 |
 
 **验收标准**：`mvn test` 全绿；上传 → 合并 → confirm → 下载主链路无回归；中断/取消后任务可复用同 identifier 重传；全仓库文档无 `1.0.0-rc.3` 残留引用。
+
+---
+
+## 13. 追加：组件 rc.5 升级补丁与 jakarta starter 决策（v1.0.0 基线之上，2026-09）
+
+> 背景：组件仓库推进至 `1.0.0-rc.5`（相对 rc.4 的 core/store 逻辑零改动，实质新增 `upload-file-servlet-jakarta` / `upload-file-spring-boot-starter-jakarta` 与 Boot 4 demo），而业务工程仍锁在 `1.0.0-rc.4`——盲点 1「自我升级滞后」再次出现。rc.4 收口已验证该流程（见 §12），本次按同一流程闭环，并把「组件新增 jakarta starter 后是否迁移」这一新决策点用 ADR 成文（`docs/design/ADR-001-upload-file-starter-jakarta.md`），避免「已知说明式」的债无人评估。
+
+| 任务 | 内容 | 关联 | 状态 |
+|---|---|---|---|
+| PF-601 | 依赖升级：`server/pom.xml` 中 `upload-file-core` / `upload-file-store-redis` `1.0.0-rc.4 → 1.0.0-rc.5`（core/store 逻辑不变，升级仅版本对齐） | TSDD §6.1 / README | 已完成 |
+| PF-602 | 分析 `upload-file-spring-boot-starter-jakarta` 直接可用性：`/upload` 路由冲突、Bean 半冲突（`@ConditionalOnMissingBean` 回退 + 无条件 Servlet 注册）、错误体契约、下载安全面等，结论为**不迁移**（继续 core 手工装配），输出 ADR-001（含撤销/迁移触发条件） | TSDD §6.1/§11 / ADR-001 | 已完成 |
+| PF-603 | 回归验证：`mvn compile` + `UploadFileErrorMappingTest`（rc.4/rc.5 类型化异常映射）全绿；确认 rc.5 本地仓库可解析 | TESTCASES | 已完成 |
+| PF-604 | 文档同步 rc.5：README / TSDD / PRD / PLAN / CHANGELOG 当前坐标与「未启用 starter」表述更新，登记 ADR-001；`docs/DEV-JOURNEY-REFLECTION.md` 补 rc.5 收口 | 全仓库 | 已完成 |
+
+**验收标准**：`mvn test` 全绿；全仓库当前坐标引用为 `1.0.0-rc.5`（`rc.4` 仅作为「引入某契约的版本」历史标注保留）；「为何不用 jakarta starter」有 ADR-001 成文并在 README/TSDD/PRD 中被引用；rc.5 尚未发布至 Maven Central 一事已在 CHANGELOG 明示（发布前新环境需 `mvn install` 或等待中央仓库）。
+
+---
+
+## 14. 追加：组件 rc.6 升级与迁移到官方 starter-jakarta（v1.0.0 基线之上，2026-09）
+
+> 背景：组件 `1.0.0-rc.6` 是「商业化 HTTP 层可接入」版本，专门回应本工程 [ADR-001](ADR-001-upload-file-starter-jakarta.md)/[UPGRADE](UPGRADE-upload-file-starter-jakarta.md) 评估——`/download` 默认关闭、`AccessControl.decide()` 返回 403、`AccessControlListener` 审计、`UploadErrorRenderer`/`endpoint`/`http`/`multipart` 可控。ADR-001 §6 撤销条件 #2/#3 满足，故执行迁移预案（C1~C8）。
+
+| 任务 | 内容 | 关联 | 状态 |
+|---|---|---|---|
+| PF-701 | 依赖迁移：`server/pom.xml` `upload-file-core` → `upload-file-spring-boot-starter-jakarta:1.0.0-rc.6`，保留 `upload-file-store-redis:1.0.0-rc.6` | TSDD §6.1 / ADR-001 | 已完成 |
+| PF-702 | 删除手工装配与自研端点：`UploadFileConfig`、`UploadController`；`/upload` 由组件 `UploadServlet` 承载 | UPGRADE C2/C3 | 已完成 |
+| PF-703 | 配置对齐 rc.6：`endpoint.upload-enabled=true` / `download-enabled=false`、`http.error-body=legacy`、`multipart.strategy=component`、`cleanup.use-redis-lock=true`、`observability.access-log=false`；测试 profile 关闭 cleanup/redis-lock | UPGRADE C5 | 已完成 |
+| PF-704 | AccessControl/审计迁移：`UploadOwnerAccessControl` 覆写 `decide()` → 403；新增 `UploadAccessAuditListener`（`AccessControlListener`）在决策点写 `FORBIDDEN success=0`；`GlobalExceptionHandler` 组件异常映射降级为防御性兜底 | UPGRADE C6 / TSDD §9.3 | 已完成 |
+| PF-705 | 测试：新增 `UploadOwnerAccessControlTest` / `UploadAccessAuditListenerTest` / `UploadEndpointWiringTest`；`FileUploadFlowTest` 等集成链路复跑；E2E 全链路 | TESTCASES | 已完成 |
+| PF-706 | 文档同步 rc.6：ADR-001 改「已接受 - 已迁移」、UPGRADE 改「已执行」并补 §14、README / TSDD / PRD / PLAN / CHANGELOG / DEV-JOURNEY 同步 | 全仓库 | 已完成 |
+
+**验收标准**：`mvn test` 全绿；`/upload` 由组件 Servlet 服务且成功体与前端假设一致（前端零改动）；越权在 Servlet 路径返回 403 且落 `FORBIDDEN` 审计（X1 不回归）；`/download` 默认不注册；全仓库当前坐标引用为 `1.0.0-rc.6`，无 `UploadFileConfig`/`UploadController` 残留。
+
+---
+
+## 15. 追加：组件 rc.7 升级（存储正确性与扩展点一致性收口，2026-09）
+
+> 背景：rc.6 迁移完成后，本工程向组件提交「rc.6 迁移评审反馈」（组件仓库 `doc/user-feedback/upload-file-rc6-migration-feedback.md`），列出 P0（`RedisTaskStore` 索引泄漏/N+1、starter 未消费宿主 `UploadErrorRenderer`、`multipart.strategy=component` 默认无上限）与 P1（进程内 `IdentifierLock`、非原子配额、受信读 API 命名、`AccessControl.check()` 默认实现）。组件 rc.7 逐条收口并发布。
+
+| 任务 | 内容 | 关联 | 状态 |
+|---|---|---|---|
+| PF-801 | 依赖升级：`upload-file-spring-boot-starter-jakarta` / `upload-file-store-redis` `1.0.0-rc.6 → 1.0.0-rc.7` | TSDD §6.1 | 已完成 |
+| PF-802 | 代码适配：`ResumableUploadService.getTask(String)` rc.7 起 `@Deprecated`；新增 `UploadTrustedConfig` 声明 `TrustedUploadService` Bean，`FileService.resolveMergedProduct` 改用受信读；`FileUploadFlowTest` 改用 `getTaskTrusted` | rc.7 受信读 API | 已完成 |
+| PF-803 | 配置核对：`multipart.strategy=component` 默认推导变化对本工程无影响（已显式设 `max-request-size`）；`lock.*`/`quota.store` 保持默认（单实例），在 yml 注释登记可选值 | TSDD §6.2 | 已完成 |
+| PF-804 | 回归验证：`mvn test` 全绿（161 例 / 0 失败），含 `FileUploadFlowTest` confirm 链路与 `UploadEndpointWiringTest` 装配 | TESTCASES | 已完成 |
+| PF-805 | 文档同步 rc.7：README / TSDD / PRD / PLAN / CHANGELOG / ADR-001 / UPGRADE 当前坐标与 rc.7 能力更新 | 全仓库 | 已完成 |
+
+**验收标准**：`mvn test` 全绿；全仓库当前坐标引用为 `1.0.0-rc.7`；`/upload` 契约与成功体不变、前端零改动；无编译期弃用告警（`getTask` 已迁 `TrustedUploadService`）。
+
+---
+
+## 16. 追加：组件 rc.8 升级（GA 前最后一批能力，2026-09）
+
+> 背景：rc.8 是 `1.0.0` GA 前最后一个 rc，合并后 API 与 `upload-file.*` 属性面冻结。本工程在 rc.7 基础上升级，收口版本管理（BOM）与新增能力（配额自动对账、分布式锁续租、审计上下文、starter 自动装配受信读门面），为 PF-901「组件 GA 化」铺路。
+
+| 任务 | 内容 | 关联 | 状态 |
+|---|---|---|---|
+| PF-1001 | 依赖升级：`server/pom.xml` 引入 `upload-file-bom:1.0.0-rc.8`（`dependencyManagement`/`import`），starter-jakarta 与 store-redis 去显式 version；`upload-file.version` 单点锁 | TSDD §6.1 / ADR-001 | 已完成 |
+| PF-1002 | 代码适配：删除 `UploadTrustedConfig`（rc.8 starter 自动装配 `TrustedUploadService`）；`UploadAccessAuditListener` 覆写 6 参 `onDecision(AccessContext, ...)` 写入 method/URI/IP/UA；`LogService` 新增带 IP/UA 的 `record` 重载 | rc.8 审计上下文 / 受信读自动装配 | 已完成 |
+| PF-1003 | 配置核对：显式 `trusted-upload-service.enabled=true`、`observability.access-log-scope=task`；补 `lock.renew-interval` / `quota.store=redis` 自动对账注释；单实例默认 `local` 锁 + `task-store` 配额不变 | TSDD §6.2 | 已完成 |
+| PF-1004 | 回归验证：`mvn test` 全绿（163 例 / 0 失败），`UploadEndpointWiringTest` 增补 `TrustedUploadService` 装配断言，`UploadAccessAuditListenerTest` 增补上下文用例 | TESTCASES | 已完成 |
+| PF-1005 | 文档同步 rc.8：README / TSDD / PRD / PLAN / CHANGELOG / ADR-001 / UPGRADE / DEV-JOURNEY 当前坐标与 rc.8 能力更新 | 全仓库 | 已完成 |
+
+**验收标准**：`mvn test` 全绿；依赖树仅 `1.0.0-rc.8`；`/upload` 契约与成功体不变、前端零改动；越权审计含请求上下文（method/URI/IP/UA）；无 `UploadTrustedConfig` 残留。
+
+---
+
+## 17. 追加：v1.0.0 发布治理（GA Gate，2026-09）
+
+> 背景：功能与文档闭环（G1~G12、X1~X3）已具备，但「发布治理」尚未成型——正式版仍依赖 RC 组件、CHANGELOG 未收口、500 响应泄露内部信息、无 CI/质量门禁、生产默认凭据偏弱。本节把评审结论转成带验收的任务卡：**P0 为发布阻断项，P1 为发版前应完成项**；全部完成后 v1.0.0 方可对外打 tag。
+
+| 任务 | 优先级 | 内容 | 关联 | 验收标准 |
+|---|---|---|---|---|
+| PF-901 | P0 | **组件 GA 化与依赖对齐**：`upload-file` 由 `1.0.0-rc.7` 发布为 GA（`1.0.0`）并推送 Maven Central/私服；`server/pom.xml` 仅引用 GA 坐标；新增 `maven-enforcer-plugin`（release profile 禁 `SNAPSHOT`/`-rc.`、校验 JDK 26 与 Maven 3.9+）与 `dependencyManagement` 单点锁组件版本 | PRD F8 / TSDD §11 / CHANGELOG | 干净环境（清空本地 `.m2` 组件缓存）可 `mvn -Prelease verify` 成功；`help:effective-pom` 无 RC/SNAPSHOT 依赖 |
+| PF-902 | P0 | **CHANGELOG 版本收口**：把 `[Unreleased]` 全部变更归并至 `[1.0.0]` 并冻结发布范围；产出发布清单（tag、镜像、组件版本、回滚点） | CHANGELOG / PLAN §15 | `[Unreleased]` 为空；`git tag v1.0.0` 内容与 CHANGELOG 一致 |
+| PF-903 | P0 | **500 错误脱敏**：`GlobalExceptionHandler.handleOther` 改为固定文案（`系统内部错误，请稍后重试`），细节仅入服务端日志；新增回归断言「响应体不含绝对路径/异常类名」 | DEV-JOURNEY 盲点3 / `GlobalExceptionHandler.java:128` | 新增 `GlobalExceptionHandlerTest` 通过；构造异常时响应体无内部细节 |
+| PF-904 | P0 | **CI 与质量门禁**：新增 `.github/workflows/ci.yml`（PR 触发 build + `mvn test` + JaCoCo 整体 ≥80%/核心 ≥85% + Checkstyle/SpotBugs + 前端 Vitest ≥70% + ESLint/Prettier），失败阻塞合并，覆盖率报告回注 PR | PRD §6 / PLAN PF-005 / TESTCASES X6 | PR 上 CI 绿且门禁生效；故意降覆盖率或违规可阻断合并 |
+| PF-905 | P0 | **生产默认凭据收紧**：启动期弱口令校验（MySQL/Redis/admin）或强制首登改密；确认 `CAPTCHA_ENABLED=false`、`ADMIN_BOOTSTRAP_PASSWORD` 仅测试 profile 可达，生产禁用 | PRD F1 / `application.yml:12,40-42` | 弱默认口令启动被拒或告警；生产 profile 下测试开关不生效 |
+| PF-906 | P1 | **性能基线（补 TC-PERF）**：造数脚本（5000 文件、50 并发上传、Range 下载、千级搜索）跑一次并记录基线；未达标项在 PRD §6 标注「未验证/待优化」 | PLAN PF-406 / TESTCASES TC-PERF / PRD §6 | 产出性能报告；PRD NFR 状态与报告一致 |
+| PF-907 | P1 | **可复现构建**：后端测试引入 Testcontainers（MySQL/Redis），E2E 收敛为 `make test` 一键；扫描并清除仓库内绝对路径（如 `/Users/...`） | TESTCASES X7 / DEV-JOURNEY 盲点5 | 新机器无需手动起栈即可 `make test`；仓库无绝对路径 |
+| PF-908 | P1 | **安全流水线**：CI 增加依赖漏洞扫描（OWASP dependency-check/OSV）、密钥扫描（gitleaks）、`npm audit`，高危即阻断 | DEV-JOURNEY 建议5 / TESTCASES X6 | 扫描入 CI；高危依赖或泄露密钥可阻断合并 |
+| PF-909 | P1 | **运维就绪**：交付《发布/运维手册》（升级、回滚、备份恢复演练、健康检查、磁盘告警通知渠道），`backup.sh` 升级为可演练 | REVIEW G9 / PLAN PF-404 / `scripts/backup.sh` | 备份→恢复演练通过；告警有明确通知渠道；手册评审通过 |
+
+**发布门禁**：PF-901 ~ PF-905 全绿 + PF-902 发布清单签署后，方可执行 PF-407「v1.0.0 打标签」；PF-906 ~ PF-909 若未完成，须在发布说明的「已知限制」中逐条列明并给出 v1.1 排期，不得对外宣称对应 NFR 已达标。
+
+**验收标准**：干净环境可复现构建；`mvn -Prelease verify` 通过且无 RC/SNAPSHOT 依赖；CI 门禁生效；500 响应无内部信息；生产默认凭据安全；发布清单与 tag 一致。

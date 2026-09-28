@@ -1,5 +1,6 @@
 package cn.chenxinjie.pathfinder.security;
 
+import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.entity.Role;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
@@ -54,7 +55,7 @@ class TokenAuthFilterTest {
         ValueOperations<String, String> vo = mock(ValueOperations.class);
         valueOps = vo;
         when(redis.opsForValue()).thenReturn(valueOps);
-        filter = new TokenAuthFilter(redis, userRepository, userRoleRepository, roleRepository);
+        filter = new TokenAuthFilter(redis, userRepository, userRoleRepository, roleRepository, new PathProperties());
 
         Role role = new Role();
         role.setId(2L);

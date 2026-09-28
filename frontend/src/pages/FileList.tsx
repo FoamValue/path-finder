@@ -140,9 +140,7 @@ export default function FileList() {
   const download = async (f: FileInfo) => {
     try {
       const d = await get<{ token: string }>(`/api/file/${f.id}/downloadToken`);
-      const resp = await fetch(`/api/file/download/${d.token}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
-      });
+      const resp = await fetch(`/api/file/download/${d.token}`, { credentials: 'include' });
       if (!resp.ok) {
         let msg = `下载失败（HTTP ${resp.status}）`;
         try {
@@ -172,9 +170,7 @@ export default function FileList() {
     }
     try {
       const d = await post<{ token: string }>('/api/file/batchDownload', { ids: selectedKeys });
-      const resp = await fetch(`/api/file/download/${d.token}`, {
-        headers: { Authorization: `Bearer ${localStorage.getItem('pf_token')}` },
-      });
+      const resp = await fetch(`/api/file/download/${d.token}`, { credentials: 'include' });
       if (!resp.ok) {
         throw new Error(`批量下载失败（HTTP ${resp.status}）`);
       }

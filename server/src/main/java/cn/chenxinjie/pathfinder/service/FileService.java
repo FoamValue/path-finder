@@ -12,8 +12,10 @@ import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.security.AuthUser;
 import cn.chenxinjie.pathfinder.util.PathUtil;
 import cn.chenxinjie.pathfinder.util.RedisTtlPolicy;
+import cn.chenxinjie.pathfinder.util.SqlLike;
 import cn.chenxinjie.uploadfile.core.model.UploadTask;
 import cn.chenxinjie.uploadfile.core.service.ResumableUploadService;
+import cn.chenxinjie.uploadfile.core.service.TrustedUploadService;
 import jakarta.persistence.criteria.Predicate;
 import lombok.AllArgsConstructor;
 import lombok.Data;
@@ -22,10 +24,13 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.io.IOException;
 import java.io.InputStream;
@@ -35,7 +40,11 @@ import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -61,6 +70,7 @@ public class FileService {
     private final ObjectMapper objectMapper;
     private final UserRepository userRepository;
     private final ResumableUploadService uploadService;
+    private final TrustedUploadService trustedUploadService;
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileRecycleBinRepository recycleBinRepository,
@@ -70,7 +80,8 @@ public class FileService {
                        LogService logService,
                        ObjectMapper objectMapper,
                        UserRepository userRepository,
-                       ResumableUploadService uploadService) {
+                       ResumableUploadService uploadService,
+                       TrustedUploadService trustedUploadService) {
         this.fileInfoRepository = fileInfoRepository;
         this.recycleBinRepository = recycleBinRepository;
         this.deptService = deptService;
@@ -80,6 +91,7 @@ public class FileService {
         this.objectMapper = objectMapper;
         this.userRepository = userRepository;
         this.uploadService = uploadService;
+        this.trustedUploadService = trustedUploadService;
     }
 
     @Data
@@ -176,7 +188,8 @@ public class FileService {
                 ps.add(cb.equal(root.get("deptId"), deptId));
             }
             if (keyword != null && !keyword.isBlank()) {
-                ps.add(cb.like(root.get("originalName"), "%" + keyword + "%"));
+                ps.add(cb.like(root.get("originalName"),
+                        SqlLike.containsPattern(keyword), '\\'));
             }
             Set<Long> v = deptService.visibleDeptIds(user);
             if (v != null) {
@@ -191,10 +204,11 @@ public class FileService {
         };
         Page<FileInfo> page = fileInfoRepository.findAll(spec,
                 PageRequest.of(pageNum - 1, Math.min(pageSize, 100), Sort.by(Sort.Direction.DESC, "createdAt")));
-        return PageResult.of(page.map(this::toVo), pageNum, pageSize);
+        Map<Long, String> userNames = userNames(page.getContent());
+        return PageResult.of(page.map(f -> toVo(f, userNames)), pageNum, pageSize);
     }
 
-    private FileVo toVo(FileInfo f) {
+    private FileVo toVo(FileInfo f, Map<Long, String> userNames) {
         FileVo vo = new FileVo();
         vo.setId(f.getId());
         vo.setOriginalName(f.getOriginalName());
@@ -208,31 +222,48 @@ public class FileService {
         vo.setStatus(f.getStatus());
         vo.setDiskStatus(f.getDiskStatus());
         vo.setCreatedAt(f.getCreatedAt());
-        try {
-            vo.setOwnerName(userName(f.getOwnerId()));
-        } catch (Exception ignore) {
-        }
-        try {
-            vo.setCreatorName(userName(f.getCreatorId()));
-        } catch (Exception ignore) {
-        }
+        vo.setOwnerName(userNames.get(f.getOwnerId()));
+        vo.setCreatorName(userNames.get(f.getCreatorId()));
         return vo;
     }
 
-    private String userName(Long id) {
-        return userRepository.findById(id).map(User::getRealName).orElse(null);
+    /**
+     * 批量取本页文件涉及的归属人/创建人姓名（一次 IN 查询），替代逐行 {@code findById} 的 N+1。
+     */
+    private Map<Long, String> userNames(List<FileInfo> files) {
+        Set<Long> ids = new HashSet<>();
+        for (FileInfo f : files) {
+            if (f.getOwnerId() != null) {
+                ids.add(f.getOwnerId());
+            }
+            if (f.getCreatorId() != null) {
+                ids.add(f.getCreatorId());
+            }
+        }
+        if (ids.isEmpty()) {
+            return Map.of();
+        }
+        Map<Long, String> names = new HashMap<>();
+        for (User u : userRepository.findAllById(ids)) {
+            names.put(u.getId(), u.getRealName());
+        }
+        return names;
     }
 
     public FileVo meta(Long id, AuthUser user) {
         FileInfo f = getFile(id);
         assertCanView(f, user);
-        return toVo(f);
+        return toVo(f, userNames(List.of(f)));
     }
 
     /* ============ 上传 ============ */
 
     @Transactional
     public UploadTicket uploadTicket(String fileName, Long fileSize, String spaceType, Long deptId, AuthUser user) {
+        // 文件名校验：非空 + 长度上限，避免 PathUtil.extension(null) NPE 与 original_name(n=255) 约束 500
+        if (fileName == null || fileName.isBlank() || fileName.length() > 255) {
+            throw BizException.badRequest("文件名不合法");
+        }
         if (spaceType == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(spaceType)) {
             throw BizException.badRequest("非法的空间类型");
         }
@@ -266,8 +297,11 @@ public class FileService {
     /**
      * 合并确认：按组件 rc.4 稳定读接口 getTask().finalPath 定位合并产物 → 迁移至统一存储 →
      * 回填 MD5 → READY；入库后调用 cancelUpload 显式回收组件侧任务/残留（TSDD 6.3 / G3 冻结方案）。
+     *
+     * <p>A2 优化：文件迁移与整文件 MD5（可能数百 MB）在事务外执行，避免长事务占用 DB 连接；
+     * DB 更新由单条 {@code save} 自身事务提交，<b>提交成功后</b>才回收组件任务，杜绝「任务已删、
+     * DB 回滚」导致的产物与记录不一致。</p>
      */
-    @Transactional
     public void confirm(Long fileId, AuthUser user) {
         FileInfo f = getFile(fileId);
         if (!user.isAdmin() && !f.getCreatorId().equals(user.getId())) {
@@ -289,26 +323,34 @@ public class FileService {
             log.error("confirm move failed fileId={}", fileId, e);
             throw BizException.badRequest("文件迁移失败：" + e.getMessage());
         }
+        // 事务外读盘：MD5 与磁盘基线（大文件不占用 DB 连接）
+        String fileMd5 = md5(target);
+        long fileSize = f.getFileSize() == 0 ? target.toFile().length() : f.getFileSize();
+        LocalDateTime diskModifiedAt = diskModifiedAt(target);
+        String identifier = f.getUploadIdentifier();
+
         f.setStoragePath(rel);
         f.setFileName(target.getFileName().toString());
-        f.setFileSize(f.getFileSize() == 0 ? target.toFile().length() : f.getFileSize());
-        f.setFileMd5(md5(target));
+        f.setFileSize(fileSize);
+        f.setFileMd5(fileMd5);
         f.setStatus("READY");
         f.setDiskStatus("READY");
-        f.setDiskModifiedAt(diskModifiedAt(target));
+        f.setDiskModifiedAt(diskModifiedAt);
         fileInfoRepository.save(f);
-        cleanupUploadTask(f.getUploadIdentifier());
+        // 提交后再回收组件任务/残留（避免 DB 回滚而任务已删）
+        cleanupUploadTask(identifier);
         logService.record(user, "UPLOAD", "FILE", String.valueOf(fileId), f.getOriginalName(), "上传完成", true);
     }
 
     /**
-     * 合并产物定位（rc.4）：优先使用组件任务元数据的 finalPath（稳定读接口 getTask），
+     * 合并产物定位（rc.4；rc.7 改用受信读门面）：优先使用组件任务元数据的 finalPath（稳定读接口
+     * {@link TrustedUploadService#getTask(String)}，显式声明无访问门控的可信服务端读），
      * 元数据不可达时回退到旧版目录约定，兼容历史未清理任务。
      */
     private Path resolveMergedProduct(FileInfo f) {
         String identifier = f.getUploadIdentifier();
         if (identifier != null) {
-            Optional<UploadTask> task = uploadService.getTask(identifier);
+            Optional<UploadTask> task = trustedUploadService.getTask(identifier);
             if (task.isPresent() && task.get().getFinalPath() != null && !task.get().getFinalPath().isBlank()) {
                 Path p = Path.of(task.get().getFinalPath());
                 if (Files.exists(p)) {
@@ -384,6 +426,38 @@ public class FileService {
         if (form.getSpaceType() == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(form.getSpaceType())) {
             throw BizException.badRequest("非法的目标空间类型");
         }
+        // M1 保守收紧：目标归属人必须存在
+        if (form.getOwnerId() != null) {
+            userRepository.findById(form.getOwnerId())
+                    .orElseThrow(() -> BizException.notFound("目标归属用户不存在"));
+        }
+        if ("DEPT".equals(form.getSpaceType())) {
+            if (form.getDeptId() == null) {
+                throw BizException.badRequest("部门空间必须指定目标部门");
+            }
+            deptService.get(form.getDeptId());
+        }
+        if (!user.isAdmin()) {
+            // M1：非系统管理员不得把文件公开化，也不得把个人空间文件提权为部门空间
+            if ("PUBLIC".equals(form.getSpaceType())
+                    || ("DEPT".equals(form.getSpaceType()) && "PERSONAL".equals(f.getSpaceType()))) {
+                throw BizException.forbidden("无权将文件公开化或提升为部门空间");
+            }
+            // M1：目标部门必须在操作者可见部门范围内，防止注入不可见部门
+            Set<Long> v = deptService.visibleDeptIds(user);
+            if ("DEPT".equals(form.getSpaceType())
+                    && (v == null || !v.contains(form.getDeptId()))) {
+                throw BizException.forbidden("目标部门不在你的可见范围内");
+            }
+            // M1：目标归属用户需在操作者可见部门范围内（跨不可见部门移交被拒绝）
+            if (form.getOwnerId() != null && !form.getOwnerId().equals(f.getOwnerId())) {
+                User target = userRepository.findById(form.getOwnerId()).orElse(null);
+                Long tDept = target == null ? null : target.getDeptId();
+                if (tDept == null || v == null || !v.contains(tDept)) {
+                    throw BizException.forbidden("不能将文件移交给可见范围外的用户");
+                }
+            }
+        }
         String oldDetail = "space=" + f.getSpaceType() + ",dept=" + f.getDeptId() + ",owner=" + f.getOwnerId();
         f.setSpaceType(form.getSpaceType());
         f.setDeptId("DEPT".equals(form.getSpaceType()) ? form.getDeptId() : null);
@@ -454,18 +528,9 @@ public class FileService {
     public void softDelete(Long id, AuthUser user) {
         FileInfo f = getFile(id);
         assertCanOperate(f, user);
-        // 物理文件移入 del/
         Path src = physicalPath(f);
         Path del = pathProperties.getStorage().delPath().resolve(f.getStoragePath());
-        if (Files.exists(src)) {
-            try {
-                Files.createDirectories(del.getParent());
-                Files.move(src, del, StandardCopyOption.REPLACE_EXISTING);
-            } catch (IOException e) {
-                log.error("soft delete move failed fileId={}", id, e);
-                throw BizException.badRequest("文件移入回收站失败");
-            }
-        }
+        boolean exists = Files.exists(src);
         f.setDelFlag(1);
         f.setDelAt(LocalDateTime.now());
         fileInfoRepository.save(f);
@@ -475,6 +540,10 @@ public class FileService {
         rb.setDeletedAt(LocalDateTime.now());
         rb.setExpireAt(LocalDateTime.now().plusDays(RECYCLE_DAYS));
         recycleBinRepository.save(rb);
+        // 物理迁移放到 DB 提交后，避免回滚时文件已被移走造成记录与产物不一致
+        if (exists) {
+            afterCommit(() -> moveQuietly(src, del));
+        }
         logService.record(user, "DELETE", "FILE", String.valueOf(id), f.getOriginalName(), "软删除，进入回收站", true);
     }
 
@@ -482,37 +551,81 @@ public class FileService {
         return PathUtil.resolve(pathProperties.getStorage().rootPath(), f.getStoragePath());
     }
 
+    /**
+     * 在事务提交后执行动作；若无活动事务（如单元测试直调）则立即执行，保证行为一致。
+     */
+    private void afterCommit(Runnable action) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    action.run();
+                }
+            });
+        } else {
+            action.run();
+        }
+    }
+
+    /** 提交后物理迁移；失败仅记录日志，不把文件系统的偶发错误回抛给请求方。 */
+    private void moveQuietly(Path src, Path dst) {
+        try {
+            Files.createDirectories(dst.getParent());
+            Files.move(src, dst, StandardCopyOption.REPLACE_EXISTING);
+        } catch (IOException e) {
+            log.error("post-commit file move failed src={} dst={}", src, dst, e);
+        }
+    }
+
     /* ============ 回收站 ============ */
 
     /**
      * 回收站分页（数据权限）：仅返回当前用户可见范围内的文件回收记录。
+     *
+     * <p>B1 优化：由数据库层分页（JOIN file_info + 可见性谓词）替代「全表加载 + 逐条 findById」，
+     * 并按页批量取文件信息，消除 N+1 与无界内存占用。</p>
      */
     public PageResult<RecycleVo> recyclePage(AuthUser user, int pageNum, int pageSize) {
-        List<FileRecycleBin> all = recycleBinRepository.findAll(
-                Sort.by(Sort.Direction.DESC, "deletedAt"));
-        List<RecycleVo> visible = all.stream()
-                .filter(rb -> fileInfoRepository.findById(rb.getFileId())
-                        .map(f -> canView(f, user))
-                        .orElse(false))
-                .map(rb -> {
-                    RecycleVo vo = new RecycleVo();
-                    vo.setId(rb.getId());
-                    vo.setFileId(rb.getFileId());
-                    vo.setDeletedBy(rb.getDeletedBy());
-                    vo.setDeletedAt(rb.getDeletedAt());
-                    vo.setExpireAt(rb.getExpireAt());
-                    fileInfoRepository.findById(rb.getFileId()).ifPresent(f -> {
-                        vo.setOriginalName(f.getOriginalName());
-                        vo.setFileType(f.getFileType());
-                        vo.setFileSize(f.getFileSize());
-                        vo.setSpaceType(f.getSpaceType());
-                    });
-                    return vo;
-                })
+        Pageable pageable = PageRequest.of(Math.max(0, pageNum - 1),
+                Math.min(Math.max(1, pageSize), 100), Sort.by(Sort.Direction.DESC, "deletedAt"));
+        Page<FileRecycleBin> page;
+        if (user.isAdmin()) {
+            page = recycleBinRepository.pageWithFile(pageable);
+        } else {
+            Set<Long> deptIds = deptService.visibleDeptIds(user);
+            page = recycleBinRepository.pageVisibleTo(user.getId(),
+                    (deptIds == null || deptIds.isEmpty()) ? Set.of(-1L) : deptIds, pageable);
+        }
+        List<FileRecycleBin> records = page.getContent();
+        Map<Long, FileInfo> fileMap = new HashMap<>();
+        if (!records.isEmpty()) {
+            List<Long> fileIds = records.stream().map(FileRecycleBin::getFileId).toList();
+            for (FileInfo f : fileInfoRepository.findAllById(fileIds)) {
+                fileMap.put(f.getId(), f);
+            }
+        }
+        List<RecycleVo> list = records.stream()
+                .map(rb -> toRecycleVo(rb, fileMap.get(rb.getFileId())))
+                .filter(Objects::nonNull)
                 .toList();
-        int from = Math.min((pageNum - 1) * pageSize, visible.size());
-        int to = Math.min(from + pageSize, visible.size());
-        return PageResult.of(visible.subList(from, to), visible.size(), pageNum, pageSize);
+        return PageResult.of(list, page.getTotalElements(), pageNum, pageSize);
+    }
+
+    private RecycleVo toRecycleVo(FileRecycleBin rb, FileInfo f) {
+        if (f == null) {
+            return null;
+        }
+        RecycleVo vo = new RecycleVo();
+        vo.setId(rb.getId());
+        vo.setFileId(rb.getFileId());
+        vo.setDeletedBy(rb.getDeletedBy());
+        vo.setDeletedAt(rb.getDeletedAt());
+        vo.setExpireAt(rb.getExpireAt());
+        vo.setOriginalName(f.getOriginalName());
+        vo.setFileType(f.getFileType());
+        vo.setFileSize(f.getFileSize());
+        vo.setSpaceType(f.getSpaceType());
+        return vo;
     }
 
     @Data
@@ -544,22 +657,17 @@ public class FileService {
                 throw BizException.badRequest("原归属部门已删除，无法恢复该文件");
             }
         }
-        // del/ → files/ 迁回
+        // del/ → files/ 迁回（物理迁移提交后执行，避免回滚时文件已被迁走）
         Path del = pathProperties.getStorage().delPath().resolve(f.getStoragePath());
         Path target = PathUtil.resolve(pathProperties.getStorage().rootPath(), f.getStoragePath());
         if (!Files.exists(del)) {
             throw BizException.badRequest("回收站物理文件已被清理，无法恢复该文件");
         }
-        try {
-            Files.createDirectories(target.getParent());
-            Files.move(del, target, StandardCopyOption.REPLACE_EXISTING);
-        } catch (IOException e) {
-            throw BizException.badRequest("恢复文件失败");
-        }
         f.setDelFlag(0);
         f.setDelAt(null);
         fileInfoRepository.save(f);
         recycleBinRepository.delete(rb);
+        afterCommit(() -> moveQuietly(del, target));
         logService.record(user, "RESTORE", "FILE", String.valueOf(fileId), f.getOriginalName(), "从回收站恢复", true);
     }
 
@@ -729,7 +837,14 @@ public class FileService {
 
     public Path resolveDownloadPath(DownloadTarget target) {
         if ("zip".equals(target.getMode())) {
-            return Path.of(target.getRelPath());
+            // H2 修复：zip 的 relPath 是绝对 tmp 路径，仅取文件名后再经 PathUtil.resolve 约束回 tmp 目录，
+            // 杜绝利用伪造 relPath 读取服务器任意文件
+            String rel = target.getRelPath();
+            if (rel == null || rel.isBlank()) {
+                throw BizException.badRequest("下载令牌不合法");
+            }
+            String name = Path.of(rel).getFileName().toString();
+            return PathUtil.resolve(pathProperties.getStorage().tmpPath(), name);
         }
         FileInfo f = getFile(target.getFileId());
         if ("MISSING".equals(f.getDiskStatus())) {
