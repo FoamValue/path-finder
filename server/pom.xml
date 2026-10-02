@@ -21,7 +21,7 @@
         <java.version>26</java.version>
         <maven.compiler.release>26</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <upload-file.version>1.0.0-rc.9</upload-file.version>
+        <upload-file.version>1.0.0</upload-file.version>
     </properties>
 
     <dependencyManagement>
@@ -71,7 +71,9 @@
              starter 自动装配 TrustedUploadService（本工程不再手写 UploadTrustedConfig）。
              rc.9：安全收口（2 高危 + 5 中危）——max-chunk-size 默认 -1→10MB 且三层上限全无界时
              启动失败（fail-fast）、require-checksum 兜底 MD5 校验、下载 finalPath 规范化前缀校验、
-             访问日志控制字符消毒、孤儿清理单条隔离、超限分块流式终止。 -->
+             访问日志控制字符消毒、孤儿清理单条隔离、超限分块流式终止。
+             1.0.0：首个 GA，仅二进制兼容修复——ChunkStorage.saveChunk 3 参签名恢复 void，
+             新增带 maxBytes 上限的 4 参重载（默认实现经计数流委托），旧版自定义实现无需改动。 -->
         <dependency>
             <groupId>cn.chenxinjie</groupId>
             <artifactId>upload-file-spring-boot-starter-jakarta</artifactId>

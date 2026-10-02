@@ -61,7 +61,7 @@ upload-file:
     key-prefix: "upload:task:"
     ttl-seconds: 86400
   verify-checksum: true
-  # rc.9 安全收口：verify-checksum=true 时必须一并开启 require-checksum，缺失 chunkMd5 的分块
+  # 1.0.0 安全收口（自 rc.9 起）：verify-checksum=true 时必须一并开启 require-checksum，缺失 chunkMd5 的分块
   # 将被拒绝并删除，而不再静默跳过校验（前端每个分片均附带 chunkMd5，开启无副作用）。
   require-checksum: true
   max-chunk-size: 5242880
