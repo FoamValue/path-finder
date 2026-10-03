@@ -7,7 +7,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * 角色：ADMIN / DEPT_ADMIN / USER / VIEWER。
+ * 角色：ADMIN / ORG_ADMIN / USER / VIEWER。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)

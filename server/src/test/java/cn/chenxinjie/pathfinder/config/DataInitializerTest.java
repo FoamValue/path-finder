@@ -1,10 +1,10 @@
 package cn.chenxinjie.pathfinder.config;
 
-import cn.chenxinjie.pathfinder.entity.Dept;
+import cn.chenxinjie.pathfinder.entity.Org;
 import cn.chenxinjie.pathfinder.entity.Role;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
-import cn.chenxinjie.pathfinder.repository.DeptRepository;
+import cn.chenxinjie.pathfinder.repository.OrgRepository;
 import cn.chenxinjie.pathfinder.repository.RoleRepository;
 import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.repository.UserRoleRepository;
@@ -29,7 +29,7 @@ import static org.mockito.Mockito.when;
 
 /**
  * 启动初始化 Seed（TSDD 3.4 / G1，对应 TC-ORG-014）：
- * 空库时初始化四角色 + 根部门 + 首个 admin（初始密码 Init@123，首次登录强制改密），已初始化时幂等跳过。
+ * 空库时初始化四角色 + 根组织 + 首个 admin（初始密码 Init@123，首次登录强制改密），已初始化时幂等跳过。
  */
 class DataInitializerTest {
 
@@ -37,15 +37,15 @@ class DataInitializerTest {
 
     private final StorageService storageService = mock(StorageService.class);
     private final RoleRepository roleRepository = mock(RoleRepository.class);
-    private final DeptRepository deptRepository = mock(DeptRepository.class);
+    private final OrgRepository orgRepository = mock(OrgRepository.class);
     private final UserRepository userRepository = mock(UserRepository.class);
     private final UserRoleRepository userRoleRepository = mock(UserRoleRepository.class);
     private final BCryptPasswordEncoder encoder = new BCryptPasswordEncoder(4);
 
     @Test
-    void emptyDatabase_seedsRolesRootDeptAndAdmin() {
+    void emptyDatabase_seedsRolesRootOrgAndAdmin() {
         when(roleRepository.count()).thenReturn(0L);
-        when(deptRepository.count()).thenReturn(0L);
+        when(orgRepository.count()).thenReturn(0L);
         when(userRepository.existsByUsername("admin")).thenReturn(false);
 
         List<Role> savedRoles = new ArrayList<>();
@@ -55,14 +55,14 @@ class DataInitializerTest {
             savedRoles.add(r);
             return r;
         });
-        java.util.concurrent.atomic.AtomicReference<Dept> savedRoot = new java.util.concurrent.atomic.AtomicReference<>();
-        when(deptRepository.save(any(Dept.class))).thenAnswer(inv -> {
-            Dept d = inv.getArgument(0);
+        java.util.concurrent.atomic.AtomicReference<Org> savedRoot = new java.util.concurrent.atomic.AtomicReference<>();
+        when(orgRepository.save(any(Org.class))).thenAnswer(inv -> {
+            Org d = inv.getArgument(0);
             d.setId(1L);
             savedRoot.set(d);
             return d;
         });
-        when(deptRepository.findAll()).thenAnswer(inv -> List.of(savedRoot.get()));
+        when(orgRepository.findAll()).thenAnswer(inv -> List.of(savedRoot.get()));
         Role adminRole = new Role();
         adminRole.setId(4L);
         adminRole.setRoleCode("ADMIN");
@@ -75,17 +75,17 @@ class DataInitializerTest {
             return u;
         });
 
-        DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
+        DataInitializer initializer = new DataInitializer(storageService, roleRepository, orgRepository,
                 userRepository, userRoleRepository, encoder, new PathProperties());
         initializer.run(null);
 
         // 四角色
         verify(roleRepository, times(4)).save(any(Role.class));
         assertTrue(savedRoles.stream().anyMatch(r -> "ADMIN".equals(r.getRoleCode())));
-        assertTrue(savedRoles.stream().anyMatch(r -> "DEPT_ADMIN".equals(r.getRoleCode())));
+        assertTrue(savedRoles.stream().anyMatch(r -> "ORG_ADMIN".equals(r.getRoleCode())));
         assertTrue(savedRoles.stream().anyMatch(r -> "VIEWER".equals(r.getRoleCode())));
-        // 根部门
-        verify(deptRepository, times(1)).save(any(Dept.class));
+        // 根组织
+        verify(orgRepository, times(1)).save(any(Org.class));
         verify(storageService).initDirs();
 
         // admin：初始密码 + 强制改密 + ADMIN 角色
@@ -106,7 +106,7 @@ class DataInitializerTest {
     @Test
     void emptyDatabase_withBootstrapAdminPassword_seedsDeterministicAccount() {
         when(roleRepository.count()).thenReturn(0L);
-        when(deptRepository.count()).thenReturn(0L);
+        when(orgRepository.count()).thenReturn(0L);
         when(userRepository.existsByUsername("admin")).thenReturn(false);
         List<Role> saved = new ArrayList<>();
         when(roleRepository.save(any(Role.class))).thenAnswer(inv -> {
@@ -115,14 +115,14 @@ class DataInitializerTest {
             saved.add(r);
             return r;
         });
-        java.util.concurrent.atomic.AtomicReference<Dept> rootRef = new java.util.concurrent.atomic.AtomicReference<>();
-        when(deptRepository.save(any(Dept.class))).thenAnswer(inv -> {
-            Dept d = inv.getArgument(0);
+        java.util.concurrent.atomic.AtomicReference<Org> rootRef = new java.util.concurrent.atomic.AtomicReference<>();
+        when(orgRepository.save(any(Org.class))).thenAnswer(inv -> {
+            Org d = inv.getArgument(0);
             d.setId(10L);
             rootRef.set(d);
             return d;
         });
-        when(deptRepository.findAll()).thenAnswer(inv -> List.of(rootRef.get()));
+        when(orgRepository.findAll()).thenAnswer(inv -> List.of(rootRef.get()));
         Role adminRole = new Role();
         adminRole.setId(4L);
         adminRole.setRoleCode("ADMIN");
@@ -131,7 +131,7 @@ class DataInitializerTest {
         PathProperties props = new PathProperties();
         props.getSecurity().setBootstrapAdminPassword("E2e@12345");
 
-        DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
+        DataInitializer initializer = new DataInitializer(storageService, roleRepository, orgRepository,
                 userRepository, userRoleRepository, encoder, props);
         initializer.run(null);
 
@@ -146,15 +146,15 @@ class DataInitializerTest {
     @Test
     void alreadySeeded_skipsIdempotently() {
         when(roleRepository.count()).thenReturn(4L);
-        when(deptRepository.count()).thenReturn(1L);
+        when(orgRepository.count()).thenReturn(1L);
         when(userRepository.existsByUsername("admin")).thenReturn(true);
 
-        DataInitializer initializer = new DataInitializer(storageService, roleRepository, deptRepository,
+        DataInitializer initializer = new DataInitializer(storageService, roleRepository, orgRepository,
                 userRepository, userRoleRepository, encoder, new PathProperties());
         initializer.run(null);
 
         verify(roleRepository, never()).save(any());
-        verify(deptRepository, never()).save(any());
+        verify(orgRepository, never()).save(any());
         verify(userRepository, never()).save(any());
         verify(userRoleRepository, never()).save(any());
         verify(roleRepository, never()).findByRoleCode(anyString());

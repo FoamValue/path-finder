@@ -29,15 +29,15 @@ export default function MainLayout() {
   }, [navigate]);
 
   const isAdmin = me?.roleCode === 'ADMIN';
-  const isDeptAdmin = me?.roleCode === 'DEPT_ADMIN';
+  const isOrgAdmin = me?.roleCode === 'ORG_ADMIN';
 
   const menuItems = [
     ...(isAdmin ? [{ key: '/storage', icon: <DashboardOutlined />, label: '系统存储' }] : []),
     { key: '/', icon: <FolderOutlined />, label: '文件管理' },
     { key: '/recycle', icon: <DeleteOutlined />, label: '回收站' },
-    ...(isAdmin ? [{ key: '/dept', icon: <ApartmentOutlined />, label: '部门管理' }] : []),
-    ...(isAdmin || isDeptAdmin
-      ? [{ key: '/user', icon: <TeamOutlined />, label: isAdmin ? '用户管理' : '本部门成员' }]
+    ...(isAdmin ? [{ key: '/org', icon: <ApartmentOutlined />, label: '组织管理' }] : []),
+    ...(isAdmin || isOrgAdmin
+      ? [{ key: '/user', icon: <TeamOutlined />, label: isAdmin ? '用户管理' : '本组织成员' }]
       : []),
     ...(isAdmin ? [{ key: '/log', icon: <FileTextOutlined />, label: '审计日志' }] : []),
   ];

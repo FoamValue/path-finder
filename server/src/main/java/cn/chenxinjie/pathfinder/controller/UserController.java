@@ -15,7 +15,7 @@ import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /**
- * 用户管理接口（仅 ADMIN；DEPT_ADMIN 只读本部门）。
+ * 用户管理接口（仅 ADMIN；ORG_ADMIN 只读本组织）。
  */
 @RestController
 @RequestMapping("/api/user")
@@ -30,10 +30,10 @@ public class UserController {
     @GetMapping("/page")
     public ApiResponse<PageResult<UserService.UserVo>> page(
             @RequestParam(required = false) String keyword,
-            @RequestParam(required = false) Long deptId,
+            @RequestParam(required = false) Long orgId,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return ApiResponse.ok(userService.page(SecurityUtil.current(), keyword, deptId, pageNum, pageSize));
+        return ApiResponse.ok(userService.page(SecurityUtil.current(), keyword, orgId, pageNum, pageSize));
     }
 
     @PostMapping

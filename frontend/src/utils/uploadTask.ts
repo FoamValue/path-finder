@@ -11,7 +11,7 @@ export interface UploadApi {
     fileName: string;
     fileSize: number;
     spaceType: string;
-    deptId: number | null;
+    orgId: number | null;
   }): Promise<{ identifier: string; fileId: number }>;
   getProgress(identifier: string): Promise<{ uploadedChunks?: number[] }>;
   uploadChunk(form: FormData): Promise<void>;
@@ -33,7 +33,7 @@ export const defaultUploadApi: UploadApi = {
       fileName: p.fileName,
       fileSize: p.fileSize,
       spaceType: p.spaceType,
-      deptId: p.deptId,
+      orgId: p.orgId,
     }),
   getProgress: async (identifier) => {
     const resp = await fetch(`/upload?action=progress&identifier=${identifier}`, fetchOpts());
@@ -92,7 +92,7 @@ const defaultSleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms))
 export async function runUpload(
   file: File,
   spaceType: string,
-  deptId: number | undefined,
+  orgId: number | undefined,
   options: RunUploadOptions = {},
 ): Promise<void> {
   const api = options.api ?? defaultUploadApi;
@@ -106,7 +106,7 @@ export async function runUpload(
     fileName: file.name,
     fileSize: file.size,
     spaceType,
-    deptId: spaceType === 'DEPT' ? deptId ?? null : null,
+    orgId: spaceType === 'ORG' ? orgId ?? null : null,
   });
   const { identifier, fileId } = ticket;
   const chunkTotal = Math.max(1, Math.ceil(file.size / CHUNK_SIZE));

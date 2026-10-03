@@ -1,10 +1,10 @@
 package cn.chenxinjie.pathfinder.config;
 
-import cn.chenxinjie.pathfinder.entity.Dept;
+import cn.chenxinjie.pathfinder.entity.Org;
 import cn.chenxinjie.pathfinder.entity.Role;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
-import cn.chenxinjie.pathfinder.repository.DeptRepository;
+import cn.chenxinjie.pathfinder.repository.OrgRepository;
 import cn.chenxinjie.pathfinder.repository.RoleRepository;
 import cn.chenxinjie.pathfinder.repository.UserRepository;
 import cn.chenxinjie.pathfinder.repository.UserRoleRepository;
@@ -18,7 +18,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 启动初始化：存储目录 + 初始数据 Seed（角色、根部门、首个 admin，TSDD 3.4）。
+ * 启动初始化：存储目录 + 初始数据 Seed（角色、根组织、首个 admin，TSDD 3.4）。
  */
 @Component
 public class DataInitializer implements ApplicationRunner {
@@ -27,19 +27,19 @@ public class DataInitializer implements ApplicationRunner {
 
     private final StorageService storageService;
     private final RoleRepository roleRepository;
-    private final DeptRepository deptRepository;
+    private final OrgRepository orgRepository;
     private final UserRepository userRepository;
     private final UserRoleRepository userRoleRepository;
     private final PasswordEncoder passwordEncoder;
     private final PathProperties pathProperties;
 
     public DataInitializer(StorageService storageService, RoleRepository roleRepository,
-                           DeptRepository deptRepository, UserRepository userRepository,
+                           OrgRepository orgRepository, UserRepository userRepository,
                            UserRoleRepository userRoleRepository, PasswordEncoder passwordEncoder,
                            PathProperties pathProperties) {
         this.storageService = storageService;
         this.roleRepository = roleRepository;
-        this.deptRepository = deptRepository;
+        this.orgRepository = orgRepository;
         this.userRepository = userRepository;
         this.userRoleRepository = userRoleRepository;
         this.passwordEncoder = passwordEncoder;
@@ -51,7 +51,7 @@ public class DataInitializer implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         storageService.initDirs();
         seedRoles();
-        seedRootDept();
+        seedRootOrg();
         seedAdmin();
         log.info("PathFinder 数据初始化完成");
     }
@@ -62,7 +62,7 @@ public class DataInitializer implements ApplicationRunner {
         }
         for (String[] r : new String[][]{
                 {"ADMIN", "系统管理员"},
-                {"DEPT_ADMIN", "部门管理员"},
+                {"ORG_ADMIN", "组织管理员"},
                 {"USER", "普通员工"},
                 {"VIEWER", "访客"}}) {
             Role role = new Role();
@@ -74,29 +74,29 @@ public class DataInitializer implements ApplicationRunner {
         log.info("已初始化角色数据");
     }
 
-    private void seedRootDept() {
-        if (deptRepository.count() > 0) {
+    private void seedRootOrg() {
+        if (orgRepository.count() > 0) {
             return;
         }
-        Dept root = new Dept();
+        Org root = new Org();
         root.setParentId(0L);
         root.setName("组织");
         root.setSortOrder(0);
-        deptRepository.save(root);
-        log.info("已初始化根部门");
+        orgRepository.save(root);
+        log.info("已初始化根组织");
     }
 
     private void seedAdmin() {
         if (userRepository.existsByUsername("admin")) {
             return;
         }
-        Dept root = deptRepository.findAll().stream().findFirst().orElseThrow();
+        Org root = orgRepository.findAll().stream().findFirst().orElseThrow();
         String bootstrapPwd = pathProperties.getSecurity().getBootstrapAdminPassword();
         boolean bootstrap = bootstrapPwd != null && !bootstrapPwd.isBlank();
         User admin = new User();
         admin.setUsername("admin");
         admin.setRealName("系统管理员");
-        admin.setDeptId(root.getId());
+        admin.setOrgId(root.getId());
         // 自动化测试可经 ADMIN_BOOTSTRAP_PASSWORD 注入固定密码并跳过强制改密；默认 Init@123 + 首登强制改密
         admin.setPassword(passwordEncoder.encode(bootstrap ? bootstrapPwd : "Init@123"));
         admin.setMustChangePassword(bootstrap ? 0 : 1);

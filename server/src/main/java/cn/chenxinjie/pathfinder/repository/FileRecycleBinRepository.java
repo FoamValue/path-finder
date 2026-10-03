@@ -31,17 +31,17 @@ public interface FileRecycleBinRepository extends JpaRepository<FileRecycleBin, 
     Page<FileRecycleBin> pageWithFile(Pageable pageable);
 
     /**
-     * 回收站分页（B1，数据权限）：仅返回当前用户可见范围（PUBLIC / 本人 PERSONAL / 可见部门 DEPT）。
+     * 回收站分页（B1，数据权限）：仅返回当前用户可见范围（PUBLIC / 本人 PERSONAL / 可见组织 ORG）。
      */
     @Query(value = "SELECT rb FROM FileRecycleBin rb, FileInfo f WHERE rb.fileId = f.id "
             + "AND (f.spaceType = 'PUBLIC' "
             + "OR (f.spaceType = 'PERSONAL' AND f.ownerId = :userId) "
-            + "OR (f.spaceType = 'DEPT' AND f.deptId IN :deptIds))",
+            + "OR (f.spaceType = 'ORG' AND f.orgId IN :orgIds))",
             countQuery = "SELECT COUNT(rb) FROM FileRecycleBin rb, FileInfo f WHERE rb.fileId = f.id "
             + "AND (f.spaceType = 'PUBLIC' "
             + "OR (f.spaceType = 'PERSONAL' AND f.ownerId = :userId) "
-            + "OR (f.spaceType = 'DEPT' AND f.deptId IN :deptIds))")
+            + "OR (f.spaceType = 'ORG' AND f.orgId IN :orgIds))")
     Page<FileRecycleBin> pageVisibleTo(@Param("userId") Long userId,
-                                       @Param("deptIds") Collection<Long> deptIds,
+                                       @Param("orgIds") Collection<Long> orgIds,
                                        Pageable pageable);
 }

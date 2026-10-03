@@ -74,7 +74,7 @@ class TokenAuthFilterTest {
         u.setId(id);
         u.setUsername("zhangsan");
         u.setRealName("张三");
-        u.setDeptId(1L);
+        u.setOrgId(1L);
         u.setStatus(1);
         u.setDelFlag(0);
         u.setMustChangePassword(mustChange);

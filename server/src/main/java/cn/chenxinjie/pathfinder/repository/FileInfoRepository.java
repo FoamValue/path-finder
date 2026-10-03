@@ -18,7 +18,7 @@ public interface FileInfoRepository extends JpaRepository<FileInfo, Long>, JpaSp
 
     Optional<FileInfo> findFirstByUploadIdentifierAndDelFlag(String uploadIdentifier, Integer delFlag);
 
-    long countByDelFlagAndDeptId(Integer delFlag, Long deptId);
+    long countByDelFlagAndOrgId(Integer delFlag, Long orgId);
 
     long countByDelFlagAndOwnerId(Integer delFlag, Long ownerId);
 

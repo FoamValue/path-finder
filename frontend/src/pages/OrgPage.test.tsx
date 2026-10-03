@@ -1,6 +1,6 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
-import DeptPage from '../pages/DeptPage';
+import OrgPage from '../pages/OrgPage';
 
 const mocks = vi.hoisted(() => ({
   get: vi.fn(),
@@ -46,7 +46,7 @@ async function clickModalOk() {
   fireEvent.click(screen.getByRole('button', { name: 'OK' }));
 }
 
-describe('部门管理页（TC-ORG-001~005 前端）', () => {
+describe('组织管理页（TC-ORG-001~005 前端）', () => {
   beforeEach(() => {
     vi.unstubAllGlobals();
     mocks.get.mockReset();
@@ -58,18 +58,18 @@ describe('部门管理页（TC-ORG-001~005 前端）', () => {
     mocks.get.mockResolvedValue(tree);
   });
 
-  it('展开后渲染部门树父子行', async () => {
-    render(<DeptPage />);
+  it('展开后渲染组织树父子行', async () => {
+    render(<OrgPage />);
     expect(await screen.findByText('研发部')).toBeTruthy();
 
     const expand = rowOf('研发部').querySelector('.ant-table-row-expand-icon') as HTMLElement;
     fireEvent.click(expand);
     expect(await screen.findByText('前端组')).toBeTruthy();
-    expect(screen.getByText('新增根部门')).toBeTruthy();
+    expect(screen.getByText('新增根组织')).toBeTruthy();
   });
 
-  it('编辑部门：预填名称并 PUT 保存', async () => {
-    render(<DeptPage />);
+  it('编辑组织：预填名称并 PUT 保存', async () => {
+    render(<OrgPage />);
     await screen.findByText('研发部');
 
     fireEvent.click(buttonByText(rowOf('研发部'), '编辑')!);
@@ -80,33 +80,33 @@ describe('部门管理页（TC-ORG-001~005 前端）', () => {
     await clickModalOk();
 
     await waitFor(() =>
-      expect(mocks.put).toHaveBeenCalledWith('/api/dept/1', expect.objectContaining({ name: '研发一部' })),
+      expect(mocks.put).toHaveBeenCalledWith('/api/org/1', expect.objectContaining({ name: '研发一部' })),
     );
-    expect(mocks.messageSuccess).toHaveBeenCalledWith('部门已更新');
+    expect(mocks.messageSuccess).toHaveBeenCalledWith('组织已更新');
   });
 
-  it('新增根部门：携带 parentId=0 提交 POST', async () => {
-    render(<DeptPage />);
+  it('新增根组织：携带 parentId=0 提交 POST', async () => {
+    render(<OrgPage />);
     await screen.findByText('研发部');
 
-    fireEvent.click(screen.getByText('新增根部门').closest('button')!);
-    expect(await screen.findByText(/新增部门（上级：根组织）/)).toBeTruthy();
+    fireEvent.click(screen.getByText('新增根组织').closest('button')!);
+    expect(await screen.findByText(/新增组织（上级：根组织）/)).toBeTruthy();
 
     const input = screen.getByPlaceholderText('如：研发部');
     fireEvent.change(input, { target: { value: '测试部' } });
     await clickModalOk();
 
     await waitFor(() =>
-      expect(mocks.post).toHaveBeenCalledWith('/api/dept', expect.objectContaining({ name: '测试部', parentId: 0 })),
+      expect(mocks.post).toHaveBeenCalledWith('/api/org', expect.objectContaining({ name: '测试部', parentId: 0 })),
     );
-    expect(mocks.messageSuccess).toHaveBeenCalledWith('部门已创建');
+    expect(mocks.messageSuccess).toHaveBeenCalledWith('组织已创建');
   });
 
-  it('新增子部门：上级部门透传', async () => {
-    render(<DeptPage />);
+  it('新增子组织：上级组织透传', async () => {
+    render(<OrgPage />);
     await screen.findByText('研发部');
 
-    fireEvent.click(buttonByText(rowOf('研发部'), '新增子部门')!);
-    expect(await screen.findByText(/新增部门（上级：研发部）/)).toBeTruthy();
+    fireEvent.click(buttonByText(rowOf('研发部'), '新增子组织')!);
+    expect(await screen.findByText(/新增组织（上级：研发部）/)).toBeTruthy();
   });
 });

@@ -12,7 +12,7 @@ function stubMe(roleCode: string, realName = '张三') {
         JSON.stringify({
           code: 0,
           message: 'success',
-          data: { id: 1, username: 'zhangsan', realName, roleCode, deptId: 1, mustChangePassword: 0 },
+          data: { id: 1, username: 'zhangsan', realName, roleCode, orgId: 1, mustChangePassword: 0 },
         }),
         { status: 200, headers: { 'Content-Type': 'application/json' } },
       ),
@@ -45,13 +45,13 @@ describe('MainLayout 按角色渲染菜单（TC-UI-003）', () => {
 
     expect(screen.getByText('文件管理')).toBeTruthy();
     expect(screen.getByText('回收站')).toBeTruthy();
-    expect(screen.getByText('部门管理')).toBeTruthy();
+    expect(screen.getByText('组织管理')).toBeTruthy();
     expect(screen.getByText('用户管理')).toBeTruthy();
     expect(screen.getByText('审计日志')).toBeTruthy();
     expect(screen.getByText('系统存储')).toBeTruthy();
   });
 
-  it('USER 无管理菜单（用户管理/部门管理/审计/存储）', async () => {
+  it('USER 无管理菜单（用户管理/组织管理/审计/存储）', async () => {
     stubMe('USER');
     renderLayout();
     expect(await screen.findByText('张三（USER）')).toBeTruthy();
@@ -59,21 +59,21 @@ describe('MainLayout 按角色渲染菜单（TC-UI-003）', () => {
     expect(screen.getByText('文件管理')).toBeTruthy();
     expect(screen.getByText('回收站')).toBeTruthy();
     expect(screen.queryByText('用户管理')).toBeNull();
-    expect(screen.queryByText('部门管理')).toBeNull();
+    expect(screen.queryByText('组织管理')).toBeNull();
     expect(screen.queryByText('审计日志')).toBeNull();
     expect(screen.queryByText('系统存储')).toBeNull();
   });
 
-  it('DEPT_ADMIN 可见本部门成员入口，不可见系统级菜单', async () => {
-    stubMe('DEPT_ADMIN', '王五');
+  it('ORG_ADMIN 可见本组织成员入口，不可见系统级菜单', async () => {
+    stubMe('ORG_ADMIN', '王五');
     renderLayout();
-    expect(await screen.findByText('王五（DEPT_ADMIN）')).toBeTruthy();
+    expect(await screen.findByText('王五（ORG_ADMIN）')).toBeTruthy();
 
-    expect(screen.getByText('本部门成员')).toBeTruthy();
+    expect(screen.getByText('本组织成员')).toBeTruthy();
     expect(screen.queryByText('用户管理')).toBeNull();
     expect(screen.queryByText('系统存储')).toBeNull();
     expect(screen.queryByText('审计日志')).toBeNull();
-    expect(screen.queryByText('部门管理')).toBeNull();
+    expect(screen.queryByText('组织管理')).toBeNull();
   });
 
   it('获取当前用户失败时跳转登录页', async () => {

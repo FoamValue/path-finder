@@ -62,10 +62,11 @@ public class TokenAuthFilter extends OncePerRequestFilter {
                         boolean allowed = !mustChange
                                 || path.equals("/api/changePassword")
                                 || path.equals("/api/logout")
-                                || path.equals("/api/auth/me");
+                                || path.equals("/api/auth/me")
+                                || path.equals("/api/publicKey");
                         if (allowed) {
                             AuthUser au = new AuthUser(user.getId(), user.getUsername(),
-                                    user.getRealName(), resolveRoleCode(user.getId()), user.getDeptId(),
+                                    user.getRealName(), resolveRoleCode(user.getId()), user.getOrgId(),
                                     user.getMustChangePassword());
                             UsernamePasswordAuthenticationToken auth =
                                     new UsernamePasswordAuthenticationToken(au, null, List.of());

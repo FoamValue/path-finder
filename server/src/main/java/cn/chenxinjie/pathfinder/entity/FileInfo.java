@@ -38,8 +38,8 @@ public class FileInfo extends BaseEntity {
     @Column(name = "space_type", nullable = false, length = 16)
     private String spaceType;
 
-    @Column(name = "dept_id")
-    private Long deptId;
+    @Column(name = "org_id")
+    private Long orgId;
 
     @Column(name = "owner_id", nullable = false)
     private Long ownerId;

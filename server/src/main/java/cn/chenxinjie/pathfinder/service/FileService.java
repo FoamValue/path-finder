@@ -63,7 +63,7 @@ public class FileService {
 
     private final FileInfoRepository fileInfoRepository;
     private final FileRecycleBinRepository recycleBinRepository;
-    private final DeptService deptService;
+    private final OrgService orgService;
     private final PathProperties pathProperties;
     private final RedisTtlPolicy ttl;
     private final LogService logService;
@@ -74,7 +74,7 @@ public class FileService {
 
     public FileService(FileInfoRepository fileInfoRepository,
                        FileRecycleBinRepository recycleBinRepository,
-                       DeptService deptService,
+                       OrgService orgService,
                        PathProperties pathProperties,
                        RedisTtlPolicy ttl,
                        LogService logService,
@@ -84,7 +84,7 @@ public class FileService {
                        TrustedUploadService trustedUploadService) {
         this.fileInfoRepository = fileInfoRepository;
         this.recycleBinRepository = recycleBinRepository;
-        this.deptService = deptService;
+        this.orgService = orgService;
         this.pathProperties = pathProperties;
         this.ttl = ttl;
         this.logService = logService;
@@ -105,7 +105,7 @@ public class FileService {
     @AllArgsConstructor
     public static class OwnerChangeForm {
         private String spaceType;
-        private Long deptId;
+        private Long orgId;
         private Long ownerId;
     }
 
@@ -117,7 +117,7 @@ public class FileService {
         private String fileMd5;
         private String fileType;
         private String spaceType;
-        private Long deptId;
+        private Long orgId;
         private Long ownerId;
         private String ownerName;
         private Long creatorId;
@@ -142,9 +142,9 @@ public class FileService {
         return switch (f.getSpaceType()) {
             case "PUBLIC" -> true;
             case "PERSONAL" -> f.getOwnerId().equals(user.getId());
-            case "DEPT" -> {
-                Set<Long> v = deptService.visibleDeptIds(user);
-                yield v != null && v.contains(f.getDeptId());
+            case "ORG" -> {
+                Set<Long> v = orgService.visibleOrgIds(user);
+                yield v != null && v.contains(f.getOrgId());
             }
             default -> false;
         };
@@ -160,9 +160,9 @@ public class FileService {
         if (user.isAdmin() || f.getOwnerId().equals(user.getId())) {
             return true;
         }
-        if (user.isDeptAdmin()) {
-            Set<Long> v = deptService.visibleDeptIds(user);
-            return "DEPT".equals(f.getSpaceType()) && v != null && v.contains(f.getDeptId());
+        if (user.isOrgAdmin()) {
+            Set<Long> v = orgService.visibleOrgIds(user);
+            return "ORG".equals(f.getSpaceType()) && v != null && v.contains(f.getOrgId());
         }
         return false;
     }
@@ -175,7 +175,7 @@ public class FileService {
 
     /* ============ 列表（真分页 + 数据权限） ============ */
 
-    public PageResult<FileVo> page(AuthUser user, String spaceType, Long deptId, String keyword,
+    public PageResult<FileVo> page(AuthUser user, String spaceType, Long orgId, String keyword,
                                    int pageNum, int pageSize) {
         Specification<FileInfo> spec = (root, query, cb) -> {
             List<Predicate> ps = new ArrayList<>();
@@ -184,19 +184,19 @@ public class FileService {
             if (spaceType != null && !spaceType.isBlank()) {
                 ps.add(cb.equal(root.get("spaceType"), spaceType));
             }
-            if (deptId != null) {
-                ps.add(cb.equal(root.get("deptId"), deptId));
+            if (orgId != null) {
+                ps.add(cb.equal(root.get("orgId"), orgId));
             }
             if (keyword != null && !keyword.isBlank()) {
                 ps.add(cb.like(root.get("originalName"),
                         SqlLike.containsPattern(keyword), '\\'));
             }
-            Set<Long> v = deptService.visibleDeptIds(user);
+            Set<Long> v = orgService.visibleOrgIds(user);
             if (v != null) {
                 ps.add(cb.or(
                         cb.equal(root.get("spaceType"), "PUBLIC"),
-                        cb.and(cb.equal(root.get("spaceType"), "DEPT"),
-                                root.get("deptId").in(v)),
+                        cb.and(cb.equal(root.get("spaceType"), "ORG"),
+                                root.get("orgId").in(v)),
                         cb.and(cb.equal(root.get("spaceType"), "PERSONAL"),
                                 cb.equal(root.get("ownerId"), user.getId()))));
             }
@@ -216,7 +216,7 @@ public class FileService {
         vo.setFileMd5(f.getFileMd5());
         vo.setFileType(f.getFileType());
         vo.setSpaceType(f.getSpaceType());
-        vo.setDeptId(f.getDeptId());
+        vo.setOrgId(f.getOrgId());
         vo.setOwnerId(f.getOwnerId());
         vo.setCreatorId(f.getCreatorId());
         vo.setStatus(f.getStatus());
@@ -259,19 +259,19 @@ public class FileService {
     /* ============ 上传 ============ */
 
     @Transactional
-    public UploadTicket uploadTicket(String fileName, Long fileSize, String spaceType, Long deptId, AuthUser user) {
+    public UploadTicket uploadTicket(String fileName, Long fileSize, String spaceType, Long orgId, AuthUser user) {
         // 文件名校验：非空 + 长度上限，避免 PathUtil.extension(null) NPE 与 original_name(n=255) 约束 500
         if (fileName == null || fileName.isBlank() || fileName.length() > 255) {
             throw BizException.badRequest("文件名不合法");
         }
-        if (spaceType == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(spaceType)) {
+        if (spaceType == null || !Set.of("PERSONAL", "ORG", "PUBLIC").contains(spaceType)) {
             throw BizException.badRequest("非法的空间类型");
         }
-        if ("DEPT".equals(spaceType)) {
-            if (deptId == null) {
-                throw BizException.badRequest("部门空间必须指定部门");
+        if ("ORG".equals(spaceType)) {
+            if (orgId == null) {
+                throw BizException.badRequest("组织空间必须指定组织");
             }
-            deptService.get(deptId);
+            orgService.get(orgId);
         }
         String identifier = PathUtil.uuid();
         String rel = PathUtil.relativeStorePath(fileName);
@@ -282,7 +282,7 @@ public class FileService {
         f.setFileType(PathUtil.extension(fileName));
         f.setStoragePath(rel);
         f.setSpaceType(spaceType);
-        f.setDeptId("DEPT".equals(spaceType) ? deptId : null);
+        f.setOrgId("ORG".equals(spaceType) ? orgId : null);
         f.setOwnerId(user.getId());
         f.setCreatorId(user.getId());
         f.setStatus("UPLOADING");
@@ -423,7 +423,7 @@ public class FileService {
         if (f.getStatus().equals("UPLOADING")) {
             throw BizException.badRequest("文件上传/合并中，请稍后再试");
         }
-        if (form.getSpaceType() == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(form.getSpaceType())) {
+        if (form.getSpaceType() == null || !Set.of("PERSONAL", "ORG", "PUBLIC").contains(form.getSpaceType())) {
             throw BizException.badRequest("非法的目标空间类型");
         }
         // M1 保守收紧：目标归属人必须存在
@@ -431,48 +431,48 @@ public class FileService {
             userRepository.findById(form.getOwnerId())
                     .orElseThrow(() -> BizException.notFound("目标归属用户不存在"));
         }
-        if ("DEPT".equals(form.getSpaceType())) {
-            if (form.getDeptId() == null) {
-                throw BizException.badRequest("部门空间必须指定目标部门");
+        if ("ORG".equals(form.getSpaceType())) {
+            if (form.getOrgId() == null) {
+                throw BizException.badRequest("组织空间必须指定目标组织");
             }
-            deptService.get(form.getDeptId());
+            orgService.get(form.getOrgId());
         }
         if (!user.isAdmin()) {
-            // M1：非系统管理员不得把文件公开化，也不得把个人空间文件提权为部门空间
+            // M1：非系统管理员不得把文件公开化，也不得把个人空间文件提权为组织空间
             if ("PUBLIC".equals(form.getSpaceType())
-                    || ("DEPT".equals(form.getSpaceType()) && "PERSONAL".equals(f.getSpaceType()))) {
-                throw BizException.forbidden("无权将文件公开化或提升为部门空间");
+                    || ("ORG".equals(form.getSpaceType()) && "PERSONAL".equals(f.getSpaceType()))) {
+                throw BizException.forbidden("无权将文件公开化或提升为组织空间");
             }
-            // M1：目标部门必须在操作者可见部门范围内，防止注入不可见部门
-            Set<Long> v = deptService.visibleDeptIds(user);
-            if ("DEPT".equals(form.getSpaceType())
-                    && (v == null || !v.contains(form.getDeptId()))) {
-                throw BizException.forbidden("目标部门不在你的可见范围内");
+            // M1：目标组织必须在操作者可见组织范围内，防止注入不可见组织
+            Set<Long> v = orgService.visibleOrgIds(user);
+            if ("ORG".equals(form.getSpaceType())
+                    && (v == null || !v.contains(form.getOrgId()))) {
+                throw BizException.forbidden("目标组织不在你的可见范围内");
             }
-            // M1：目标归属用户需在操作者可见部门范围内（跨不可见部门移交被拒绝）
+            // M1：目标归属用户需在操作者可见组织范围内（跨不可见组织移交被拒绝）
             if (form.getOwnerId() != null && !form.getOwnerId().equals(f.getOwnerId())) {
                 User target = userRepository.findById(form.getOwnerId()).orElse(null);
-                Long tDept = target == null ? null : target.getDeptId();
-                if (tDept == null || v == null || !v.contains(tDept)) {
+                Long tOrg = target == null ? null : target.getOrgId();
+                if (tOrg == null || v == null || !v.contains(tOrg)) {
                     throw BizException.forbidden("不能将文件移交给可见范围外的用户");
                 }
             }
         }
-        String oldDetail = "space=" + f.getSpaceType() + ",dept=" + f.getDeptId() + ",owner=" + f.getOwnerId();
+        String oldDetail = "space=" + f.getSpaceType() + ",org=" + f.getOrgId() + ",owner=" + f.getOwnerId();
         f.setSpaceType(form.getSpaceType());
-        f.setDeptId("DEPT".equals(form.getSpaceType()) ? form.getDeptId() : null);
-        if ("DEPT".equals(form.getSpaceType())) {
-            if (form.getDeptId() == null) {
-                throw BizException.badRequest("部门空间必须指定目标部门");
+        f.setOrgId("ORG".equals(form.getSpaceType()) ? form.getOrgId() : null);
+        if ("ORG".equals(form.getSpaceType())) {
+            if (form.getOrgId() == null) {
+                throw BizException.badRequest("组织空间必须指定目标组织");
             }
-            deptService.get(form.getDeptId());
+            orgService.get(form.getOrgId());
         }
         if (form.getOwnerId() != null) {
-            // 移交归属人（仅所有者/部门管理员/系统管理员，已在 assertCanOperate 校验）
+            // 移交归属人（仅所有者/组织管理员/系统管理员，已在 assertCanOperate 校验）
             f.setOwnerId(form.getOwnerId());
         }
         fileInfoRepository.save(f);
-        String newDetail = "space=" + f.getSpaceType() + ",dept=" + f.getDeptId() + ",owner=" + f.getOwnerId();
+        String newDetail = "space=" + f.getSpaceType() + ",org=" + f.getOrgId() + ",owner=" + f.getOwnerId();
         logService.record(user, "OWNER_CHANGE", "FILE", String.valueOf(id), f.getOriginalName(),
                 "归属变更：" + oldDetail + " → " + newDetail, true);
     }
@@ -484,14 +484,14 @@ public class FileService {
         if (ids == null || ids.isEmpty()) {
             throw BizException.badRequest("请选择文件");
         }
-        if (form.getSpaceType() == null || !Set.of("PERSONAL", "DEPT", "PUBLIC").contains(form.getSpaceType())) {
+        if (form.getSpaceType() == null || !Set.of("PERSONAL", "ORG", "PUBLIC").contains(form.getSpaceType())) {
             throw BizException.badRequest("非法的目标空间类型");
         }
-        if ("DEPT".equals(form.getSpaceType())) {
-            if (form.getDeptId() == null) {
-                throw BizException.badRequest("部门空间必须指定目标部门");
+        if ("ORG".equals(form.getSpaceType())) {
+            if (form.getOrgId() == null) {
+                throw BizException.badRequest("组织空间必须指定目标组织");
             }
-            deptService.get(form.getDeptId());
+            orgService.get(form.getOrgId());
         }
         int ok = 0;
         int fail = 0;
@@ -592,9 +592,9 @@ public class FileService {
         if (user.isAdmin()) {
             page = recycleBinRepository.pageWithFile(pageable);
         } else {
-            Set<Long> deptIds = deptService.visibleDeptIds(user);
+            Set<Long> orgIds = orgService.visibleOrgIds(user);
             page = recycleBinRepository.pageVisibleTo(user.getId(),
-                    (deptIds == null || deptIds.isEmpty()) ? Set.of(-1L) : deptIds, pageable);
+                    (orgIds == null || orgIds.isEmpty()) ? Set.of(-1L) : orgIds, pageable);
         }
         List<FileRecycleBin> records = page.getContent();
         Map<Long, FileInfo> fileMap = new HashMap<>();
@@ -649,12 +649,12 @@ public class FileService {
         if (!canOperate(f, user)) {
             throw BizException.forbidden("无权恢复该文件");
         }
-        // X3（TSDD 8.2 / G7）：恢复前置校验——原归属部门/空间仍有效
-        if ("DEPT".equals(f.getSpaceType()) && f.getDeptId() != null) {
+        // X3（TSDD 8.2 / G7）：恢复前置校验——原归属组织/空间仍有效
+        if ("ORG".equals(f.getSpaceType()) && f.getOrgId() != null) {
             try {
-                deptService.get(f.getDeptId());
+                orgService.get(f.getOrgId());
             } catch (BizException ex) {
-                throw BizException.badRequest("原归属部门已删除，无法恢复该文件");
+                throw BizException.badRequest("原归属组织已删除，无法恢复该文件");
             }
         }
         // del/ → files/ 迁回（物理迁移提交后执行，避免回滚时文件已被迁走）
@@ -806,6 +806,16 @@ public class FileService {
         DownloadTarget target = new DownloadTarget("single", id, null, f.getOriginalName());
         logService.record(user, "DOWNLOAD", "FILE", String.valueOf(id), f.getOriginalName(), "下载", true);
         return createToken(target);
+    }
+
+    /**
+     * 预览目标：与下载同权限（assertCanView），返回可复用于 resolveDownloadPath 的目标。
+     * 预览为 inline 直读，不生成一次性 token，避免 PDF/视频内嵌重请求失效。
+     */
+    public DownloadTarget previewTarget(Long id, AuthUser user) {
+        FileInfo f = getFile(id);
+        assertCanView(f, user);
+        return new DownloadTarget("single", id, null, f.getOriginalName());
     }
 
     private DownloadTicket createToken(DownloadTarget target) {

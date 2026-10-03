@@ -7,13 +7,13 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 
 /**
- * 部门树节点。
+ * 组织树节点。
  */
 @Data
 @EqualsAndHashCode(callSuper = true)
 @Entity
-@Table(name = "sys_dept")
-public class Dept extends BaseEntity {
+@Table(name = "sys_org")
+public class Org extends BaseEntity {
 
     @Column(name = "parent_id", nullable = false)
     private Long parentId = 0L;

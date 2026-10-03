@@ -5,7 +5,7 @@ import ChangePassword from './pages/ChangePassword';
 import FileList from './pages/FileList';
 import Recycle from './pages/Recycle';
 import UserPage from './pages/UserPage';
-import DeptPage from './pages/DeptPage';
+import OrgPage from './pages/OrgPage';
 import LogPage from './pages/LogPage';
 import StoragePage from './pages/StoragePage';
 
@@ -19,7 +19,7 @@ export default function App() {
           <Route path="/" element={<FileList />} />
           <Route path="/recycle" element={<Recycle />} />
           <Route path="/user" element={<UserPage />} />
-          <Route path="/dept" element={<DeptPage />} />
+          <Route path="/org" element={<OrgPage />} />
           <Route path="/log" element={<LogPage />} />
           <Route path="/storage" element={<StoragePage />} />
         </Route>

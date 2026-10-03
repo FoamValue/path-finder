@@ -28,3 +28,7 @@ certs/
 
 # 本地部署环境变量（含宿主机存储路径）
 docker/.env
+
+# 生成物（HTML 分享打包 / QA 巡检截图输出，不入库）
+.trae-html-share-packages/
+frontend/tests/e2e/style-qa-shots/

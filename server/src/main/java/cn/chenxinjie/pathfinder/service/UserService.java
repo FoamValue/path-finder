@@ -26,19 +26,19 @@ public class UserService {
     private final UserRepository userRepository;
     private final RoleRepository roleRepository;
     private final UserRoleRepository userRoleRepository;
-    private final DeptService deptService;
+    private final OrgService orgService;
     private final FileInfoRepository fileInfoRepository;
     private final PasswordEncoder passwordEncoder;
     private final LogService logService;
 
     public UserService(UserRepository userRepository, RoleRepository roleRepository,
-                       UserRoleRepository userRoleRepository, DeptService deptService,
+                       UserRoleRepository userRoleRepository, OrgService orgService,
                        FileInfoRepository fileInfoRepository, PasswordEncoder passwordEncoder,
                        LogService logService) {
         this.userRepository = userRepository;
         this.roleRepository = roleRepository;
         this.userRoleRepository = userRoleRepository;
-        this.deptService = deptService;
+        this.orgService = orgService;
         this.fileInfoRepository = fileInfoRepository;
         this.passwordEncoder = passwordEncoder;
         this.logService = logService;
@@ -48,7 +48,7 @@ public class UserService {
     public static class UserForm {
         private String username;
         private String realName;
-        private Long deptId;
+        private Long orgId;
         private String roleCode = "USER";
         private Integer status = 1;
     }
@@ -58,24 +58,24 @@ public class UserService {
         private Long id;
         private String username;
         private String realName;
-        private Long deptId;
-        private String deptName;
+        private Long orgId;
+        private String orgName;
         private String roleCode;
         private Integer status;
         private Integer mustChangePassword;
         private java.time.LocalDateTime createdAt;
     }
 
-    public PageResult<UserVo> page(AuthUser operator, String keyword, Long deptId, int pageNum, int pageSize) {
+    public PageResult<UserVo> page(AuthUser operator, String keyword, Long orgId, int pageNum, int pageSize) {
         Pageable pageable = Pageable.ofSize(Math.min(pageSize, 100)).withPage(pageNum - 1);
         var all = userRepository.findAll();
         java.util.List<User> filtered = all.stream()
                 .filter(u -> u.getDelFlag() == 0)
-                .filter(u -> operator.isAdmin() || (deptService.visibleDeptIds(operator) != null
-                        && deptService.visibleDeptIds(operator).contains(u.getDeptId())))
+                .filter(u -> operator.isAdmin() || (orgService.visibleOrgIds(operator) != null
+                        && orgService.visibleOrgIds(operator).contains(u.getOrgId())))
                 .filter(u -> keyword == null || keyword.isBlank() || u.getUsername().contains(keyword)
                         || u.getRealName().contains(keyword))
-                .filter(u -> deptId == null || u.getDeptId().equals(deptId))
+                .filter(u -> orgId == null || u.getOrgId().equals(orgId))
                 .sorted(java.util.Comparator.comparing(User::getId))
                 .toList();
         int from = Math.min((int) pageable.getOffset(), filtered.size());
@@ -89,13 +89,13 @@ public class UserService {
         vo.setId(u.getId());
         vo.setUsername(u.getUsername());
         vo.setRealName(u.getRealName());
-        vo.setDeptId(u.getDeptId());
+        vo.setOrgId(u.getOrgId());
         vo.setRoleCode(resolveRoleCode(u.getId()));
         vo.setStatus(u.getStatus());
         vo.setMustChangePassword(u.getMustChangePassword());
         vo.setCreatedAt(u.getCreatedAt());
         try {
-            vo.setDeptName(deptService.get(u.getDeptId()).getName());
+            vo.setOrgName(orgService.get(u.getOrgId()).getName());
         } catch (Exception ignore) {
         }
         return vo;
@@ -109,13 +109,13 @@ public class UserService {
         if (userRepository.existsByUsername(form.getUsername())) {
             throw BizException.badRequest("用户名已存在");
         }
-        deptService.get(form.getDeptId());
+        orgService.get(form.getOrgId());
         Role role = roleRepository.findByRoleCode(form.getRoleCode())
                 .orElseThrow(() -> BizException.badRequest("角色不存在"));
         User user = new User();
         user.setUsername(form.getUsername());
         user.setRealName(form.getRealName());
-        user.setDeptId(form.getDeptId());
+        user.setOrgId(form.getOrgId());
         user.setStatus(form.getStatus() == null ? 1 : form.getStatus());
         user.setPassword(passwordEncoder.encode(INIT_PASSWORD));
         user.setMustChangePassword(1);
@@ -137,9 +137,9 @@ public class UserService {
         if (form.getRealName() != null) {
             user.setRealName(form.getRealName());
         }
-        if (form.getDeptId() != null) {
-            deptService.get(form.getDeptId());
-            user.setDeptId(form.getDeptId());
+        if (form.getOrgId() != null) {
+            orgService.get(form.getOrgId());
+            user.setOrgId(form.getOrgId());
         }
         if (form.getStatus() != null) {
             user.setStatus(form.getStatus());

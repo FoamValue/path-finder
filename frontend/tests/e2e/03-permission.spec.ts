@@ -4,9 +4,9 @@ import { ADMIN, INIT_PASSWORD, login, apiJson } from './helpers';
 /**
  * TC-E2E-003 P0 越权访问拦截（TESTCASES §12）+ TC-LOGIN-019/020 强制改密 E2E 侧：
  *   ADMIN 新建 USER → 该用户首登强制改密 → 改密后：
- *   1) 菜单仅见 文件管理/回收站，无 用户管理/部门管理/审计日志/系统存储；
+ *   1) 菜单仅见 文件管理/回收站，无 用户管理/组织管理/审计日志/系统存储；
  *   2) 直接调用 ADMIN 接口（新增用户/审计日志/存储监控）返回 403；
- *   3) 自己的可见用户列表正常（数据权限：仅本部门成员）。
+ *   3) 自己的可见用户列表正常（数据权限：仅本组织成员）。
  */
 test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   test.setTimeout(180_000);
@@ -14,19 +14,19 @@ test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   const username = `e2e.user.${Date.now()}`;
   const password = 'E2e@12345';
 
-  // --- ADMIN 上下文：新建 USER（归属根部门 组织）---
-  const adminCtx = await browser.newContext();
+  // --- ADMIN 上下文：新建 USER（归属根组织 组织）---
+  const adminCtx = await browser.newContext({ ignoreHTTPSErrors: true });
   const adminPage = await adminCtx.newPage();
   await login(adminPage, ADMIN.username, ADMIN.password);
   await adminPage.waitForURL((u) => u.pathname === '/');
 
-  const treeRes = await apiJson(adminPage, 'GET', '/api/dept/tree');
+  const treeRes = await apiJson(adminPage, 'GET', '/api/org/tree');
   expect(treeRes.status).toBe(200);
-  const rootDeptId = treeRes.body.data[0].id;
+  const rootOrgId = treeRes.body.data[0].id;
   const created = await apiJson(adminPage, 'POST', '/api/user', {
     username,
     realName: 'E2E测试用户',
-    deptId: rootDeptId,
+    orgId: rootOrgId,
     roleCode: 'USER',
     status: 1,
   });
@@ -34,7 +34,7 @@ test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   await adminCtx.close();
 
   // --- USER 上下文：首登强制改密（TC-LOGIN-019/020）---
-  const userCtx = await browser.newContext();
+  const userCtx = await browser.newContext({ ignoreHTTPSErrors: true });
   const page = await userCtx.newPage();
 
   await login(page, username, INIT_PASSWORD);
@@ -58,7 +58,7 @@ test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   const menu = page.locator('.ant-menu');
   await expect(menu.getByText('文件管理')).toBeVisible();
   await expect(menu.getByText('回收站')).toBeVisible();
-  for (const forbidden of ['用户管理', '部门管理', '审计日志', '系统存储']) {
+  for (const forbidden of ['用户管理', '组织管理', '审计日志', '系统存储']) {
     await expect(menu.getByText(forbidden)).toHaveCount(0);
   }
 
@@ -66,7 +66,7 @@ test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   const postUser = await apiJson(page, 'POST', '/api/user', {
     username: `x.${Date.now()}`,
     realName: 'x',
-    deptId: rootDeptId,
+    orgId: rootOrgId,
     roleCode: 'USER',
   });
   expect(postUser.status).toBe(403);
@@ -77,7 +77,7 @@ test('USER 越权访问拦截与菜单收敛', async ({ browser }) => {
   const storageInfo = await apiJson(page, 'GET', '/api/storage/info');
   expect(storageInfo.status).toBe(403);
 
-  // 数据权限：USER 仅能列出本部门成员，且可见自己（TC-PERM 数据可见侧）
+  // 数据权限：USER 仅能列出本组织成员，且可见自己（TC-PERM 数据可见侧）
   const userPageRes = await apiJson(page, 'GET', '/api/user/page?pageNum=1&pageSize=100');
   expect(userPageRes.status).toBe(200);
   expect(userPageRes.body.data.list.some((u: { username: string }) => u.username === username)).toBe(true);

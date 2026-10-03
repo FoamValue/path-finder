@@ -5,7 +5,7 @@ import cn.chenxinjie.uploadfile.core.model.MergeStatus;
 import cn.chenxinjie.uploadfile.core.service.ResumableUploadService;
 import cn.chenxinjie.pathfinder.config.PathProperties;
 import cn.chenxinjie.pathfinder.dto.PageResult;
-import cn.chenxinjie.pathfinder.entity.Dept;
+import cn.chenxinjie.pathfinder.entity.Org;
 import cn.chenxinjie.pathfinder.entity.FileInfo;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
@@ -65,7 +65,7 @@ class FileUploadFlowTest {
     private PasswordEncoder passwordEncoder;
 
     @Autowired
-    private DeptService deptService;
+    private OrgService orgService;
 
     @Autowired
     private FileInfoRepository fileInfoRepository;
@@ -234,31 +234,31 @@ class FileUploadFlowTest {
 
     @Test
     void restore_requiresOperatePermission() {
-        Long fid = uploadAndDelete("perm.txt", "permission-test", "DEPT");
+        Long fid = uploadAndDelete("perm.txt", "permission-test", "ORG");
         AuthUser viewer = createUser("viewer3", "VIEWER");
         assertThrows(BizException.class, () -> fileService.restore(fid, viewer),
-                "非归属人/非管理员/非部门管理员不得恢复部门空间文件");
+                "非归属人/非管理员/非组织管理员不得恢复组织空间文件");
     }
 
     @Test
-    void restore_whenDeptDeleted_fails() {
-        // X3（G7）：原归属部门已删除 → 拒绝恢复并给出明确提示
-        DeptService.DeptForm form = new DeptService.DeptForm();
+    void restore_whenOrgDeleted_fails() {
+        // X3（G7）：原归属组织已删除 → 拒绝恢复并给出明确提示
+        OrgService.OrgForm form = new OrgService.OrgForm();
         form.setName("回收临时部-" + System.nanoTime());
         form.setParentId(1L);
-        Dept dept = deptService.create(form);
-        Long deptId = dept.getId();
+        Org org = orgService.create(form);
+        Long orgId = org.getId();
 
-        byte[] data = "dept-deleted-restore".getBytes(StandardCharsets.UTF_8);
-        FileService.UploadTicket ticket = fileService.uploadTicket("dept.txt", (long) data.length, "DEPT", deptId, admin);
-        uploadChunk("dept.txt", ticket, data, 0, 1);
+        byte[] data = "org-deleted-restore".getBytes(StandardCharsets.UTF_8);
+        FileService.UploadTicket ticket = fileService.uploadTicket("org.txt", (long) data.length, "ORG", orgId, admin);
+        uploadChunk("org.txt", ticket, data, 0, 1);
         mergeAndWaitSucceeded(ticket.getIdentifier());
         fileService.confirm(ticket.getFileId(), admin);
         fileService.softDelete(ticket.getFileId(), admin);
 
-        deptService.delete(deptId);
+        orgService.delete(orgId);
         BizException e = assertThrows(BizException.class, () -> fileService.restore(ticket.getFileId(), admin));
-        assertTrue(e.getMessage().contains("部门"), "部门已删除时应拒绝恢复，实际: " + e.getMessage());
+        assertTrue(e.getMessage().contains("组织"), "组织已删除时应拒绝恢复，实际: " + e.getMessage());
     }
 
     @Test
@@ -321,8 +321,8 @@ class FileUploadFlowTest {
 
     private Long uploadAndDelete(String name, String content, String spaceType) {
         byte[] data = content.getBytes(StandardCharsets.UTF_8);
-        Long deptId = "DEPT".equals(spaceType) ? 1L : null;
-        FileService.UploadTicket ticket = fileService.uploadTicket(name, (long) data.length, spaceType, deptId, admin);
+        Long orgId = "ORG".equals(spaceType) ? 1L : null;
+        FileService.UploadTicket ticket = fileService.uploadTicket(name, (long) data.length, spaceType, orgId, admin);
         uploadChunk(name, ticket, data, 0, 1);
         mergeAndWaitSucceeded(ticket.getIdentifier());
         fileService.confirm(ticket.getFileId(), admin);
@@ -333,7 +333,7 @@ class FileUploadFlowTest {
     private AuthUser createUser(String username, String roleCode) {        User u = new User();
         u.setUsername(username);
         u.setRealName(username);
-        u.setDeptId(1L);
+        u.setOrgId(1L);
         u.setPassword(passwordEncoder.encode("Init@123"));
         u.setMustChangePassword(0);
         u.setStatus(1);

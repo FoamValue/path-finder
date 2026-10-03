@@ -1,7 +1,7 @@
 package cn.chenxinjie.pathfinder.service;
 
 import cn.chenxinjie.pathfinder.dto.PageResult;
-import cn.chenxinjie.pathfinder.entity.Dept;
+import cn.chenxinjie.pathfinder.entity.Org;
 import cn.chenxinjie.pathfinder.entity.Role;
 import cn.chenxinjie.pathfinder.entity.User;
 import cn.chenxinjie.pathfinder.entity.UserRole;
@@ -34,8 +34,8 @@ import static org.mockito.Mockito.when;
 
 /**
  * 用户管理服务（PRD F2 / TSDD 4.2 / G12）。
- * 覆盖：仅 ADMIN 可写、初始密码 + 强制改密、角色/部门/状态编辑、重置密码、
- * 停用、删除前个人文件强制移交校验、分页（ADMIN 全量 / DEPT_ADMIN 本部门范围）。
+ * 覆盖：仅 ADMIN 可写、初始密码 + 强制改密、角色/组织/状态编辑、重置密码、
+ * 停用、删除前个人文件强制移交校验、分页（ADMIN 全量 / ORG_ADMIN 本组织范围）。
  */
 class UserServiceTest {
 
@@ -44,7 +44,7 @@ class UserServiceTest {
     private UserRepository userRepository;
     private RoleRepository roleRepository;
     private UserRoleRepository userRoleRepository;
-    private DeptService deptService;
+    private OrgService orgService;
     private FileInfoRepository fileInfoRepository;
     private BCryptPasswordEncoder encoder;
     private LogService logService;
@@ -52,9 +52,9 @@ class UserServiceTest {
 
     private final AuthUser admin = new AuthUser(1L, "admin", "系统管理员", "ADMIN", 1L, 0);
     private final AuthUser userRole = new AuthUser(2L, "zhangsan", "张三", "USER", 1L, 0);
-    private final AuthUser deptAdmin = new AuthUser(3L, "d1", "部门管理员", "DEPT_ADMIN", 2L, 0);
+    private final AuthUser orgAdmin = new AuthUser(3L, "d1", "组织管理员", "ORG_ADMIN", 2L, 0);
 
-    private Dept devDept;
+    private Org devOrg;
     private Role userRoleEntity;
 
     private long nextUserId = 100;
@@ -64,20 +64,20 @@ class UserServiceTest {
         userRepository = mock(UserRepository.class);
         roleRepository = mock(RoleRepository.class);
         userRoleRepository = mock(UserRoleRepository.class);
-        deptService = mock(DeptService.class);
+        orgService = mock(OrgService.class);
         fileInfoRepository = mock(FileInfoRepository.class);
         encoder = new BCryptPasswordEncoder(4);
         logService = mock(LogService.class);
 
         userService = new UserService(userRepository, roleRepository, userRoleRepository,
-                deptService, fileInfoRepository, encoder, logService);
+                orgService, fileInfoRepository, encoder, logService);
 
-        devDept = dept(2, "研发部");
+        devOrg = org(2, "研发部");
         userRoleEntity = role(10L, "USER", "普通员工");
-        when(deptService.get(1L)).thenReturn(dept(1, "组织"));
-        when(deptService.get(2L)).thenReturn(devDept);
+        when(orgService.get(1L)).thenReturn(org(1, "组织"));
+        when(orgService.get(2L)).thenReturn(devOrg);
         when(roleRepository.findByRoleCode("USER")).thenReturn(Optional.of(userRoleEntity));
-        when(roleRepository.findByRoleCode("DEPT_ADMIN")).thenReturn(Optional.of(role(11L, "DEPT_ADMIN", "部门管理员")));
+        when(roleRepository.findByRoleCode("ORG_ADMIN")).thenReturn(Optional.of(role(11L, "ORG_ADMIN", "组织管理员")));
         when(roleRepository.findByRoleCode("ADMIN")).thenReturn(Optional.of(role(12L, "ADMIN", "系统管理员")));
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User u = inv.getArgument(0);
@@ -90,8 +90,8 @@ class UserServiceTest {
         when(userRoleRepository.save(any(UserRole.class))).thenAnswer(inv -> inv.getArgument(0));
     }
 
-    private Dept dept(long id, String name) {
-        Dept d = new Dept();
+    private Org org(long id, String name) {
+        Org d = new Org();
         d.setId(id);
         d.setName(name);
         return d;
@@ -105,12 +105,12 @@ class UserServiceTest {
         return r;
     }
 
-    private User user(long id, String username, String realName, long deptId, int status) {
+    private User user(long id, String username, String realName, long orgId, int status) {
         User u = new User();
         u.setId(id);
         u.setUsername(username);
         u.setRealName(realName);
-        u.setDeptId(deptId);
+        u.setOrgId(orgId);
         u.setStatus(status);
         u.setDelFlag(0);
         u.setPassword(encoder.encode(INIT));
@@ -147,12 +147,12 @@ class UserServiceTest {
     @Test
     void create_success_initialPwdMustChangeRoleAndAudit() {
         when(userRepository.existsByUsername("lisi")).thenReturn(false);
-        when(deptService.get(2L)).thenReturn(devDept);
+        when(orgService.get(2L)).thenReturn(devOrg);
 
         UserService.UserVo vo = userService.create(form("lisi", "李四", 2L, "USER"), admin);
 
         assertEquals("lisi", vo.getUsername());
-        assertEquals("研发部", vo.getDeptName());
+        assertEquals("研发部", vo.getOrgName());
         assertEquals("USER", vo.getRoleCode());
         assertEquals(1, vo.getMustChangePassword(), "新用户必须强制改密");
         ArgumentCaptor<User> captor = ArgumentCaptor.forClass(User.class);
@@ -165,7 +165,7 @@ class UserServiceTest {
     }
 
     @Test
-    void update_roleNameAndDept_changesAndReplacesRole() {
+    void update_roleNameAndOrg_changesAndReplacesRole() {
         User existing = user(200, "lisi", "李四", 2L, 1);
         when(userRepository.findById(200L)).thenReturn(Optional.of(existing));
         // 更新后角色查询返回新映射（真实库在 delete+save 后即为该状态）
@@ -174,7 +174,7 @@ class UserServiceTest {
         newUr.setUserId(200L);
         newUr.setRoleId(11L);
 
-        UserService.UserForm form = form("lisi", "李四四", 2L, "DEPT_ADMIN");
+        UserService.UserForm form = form("lisi", "李四四", 2L, "ORG_ADMIN");
         UserService.UserVo vo = userService.update(200L, form, admin);
 
         assertEquals("李四四", vo.getRealName());
@@ -266,7 +266,7 @@ class UserServiceTest {
     }
 
     @Test
-    void page_keywordAndDept_filter() {
+    void page_keywordAndOrg_filter() {
         List<User> all = List.of(
                 user(1, "zhangsan", "张三", 2L, 1),
                 user(2, "lisi", "李四", 2L, 1),
@@ -277,22 +277,22 @@ class UserServiceTest {
         assertEquals(1, byKeyword.getTotal());
         assertEquals("zhangsan", byKeyword.getList().get(0).getUsername());
 
-        PageResult<UserService.UserVo> byDept = userService.page(admin, null, 2L, 1, 20);
-        assertEquals(2, byDept.getTotal(), "按部门过滤");
+        PageResult<UserService.UserVo> byOrg = userService.page(admin, null, 2L, 1, 20);
+        assertEquals(2, byOrg.getTotal(), "按组织过滤");
     }
 
     @Test
-    void page_deptAdmin_scopedToVisibleDepts() {
+    void page_orgAdmin_scopedToVisibleOrgs() {
         List<User> all = List.of(
                 user(1, "a", "甲", 2L, 1),   // 研发部（可见）
-                user(2, "b", "乙", 3L, 1),   // 研发部子部门（可见）
+                user(2, "b", "乙", 3L, 1),   // 研发部子组织（可见）
                 user(3, "c", "丙", 5L, 1));  // 财务部（不可见）
         when(userRepository.findAll()).thenReturn(all);
-        when(deptService.visibleDeptIds(deptAdmin)).thenReturn(Set.of(2L, 3L));
+        when(orgService.visibleOrgIds(orgAdmin)).thenReturn(Set.of(2L, 3L));
 
-        PageResult<UserService.UserVo> page = userService.page(deptAdmin, null, null, 1, 20);
-        assertEquals(2, page.getTotal(), "DEPT_ADMIN 仅见本部门范围用户");
-        assertTrue(page.getList().stream().allMatch(v -> Set.of(2L, 3L).contains(v.getDeptId())));
+        PageResult<UserService.UserVo> page = userService.page(orgAdmin, null, null, 1, 20);
+        assertEquals(2, page.getTotal(), "ORG_ADMIN 仅见本组织范围用户");
+        assertTrue(page.getList().stream().allMatch(v -> Set.of(2L, 3L).contains(v.getOrgId())));
     }
 
     @Test
@@ -301,11 +301,11 @@ class UserServiceTest {
         assertEquals("USER", userService.resolveRoleCode(500L));
     }
 
-    private UserService.UserForm form(String username, String realName, Long deptId, String roleCode) {
+    private UserService.UserForm form(String username, String realName, Long orgId, String roleCode) {
         UserService.UserForm f = new UserService.UserForm();
         f.setUsername(username);
         f.setRealName(realName);
-        f.setDeptId(deptId);
+        f.setOrgId(orgId);
         f.setRoleCode(roleCode);
         f.setStatus(1);
         return f;

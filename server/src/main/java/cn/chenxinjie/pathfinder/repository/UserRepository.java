@@ -16,7 +16,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
 
     Page<User> findByDelFlag(Integer delFlag, Pageable pageable);
 
-    Page<User> findByDelFlagAndDeptIdIn(Integer delFlag, List<Long> deptIds, Pageable pageable);
+    Page<User> findByDelFlagAndOrgIdIn(Integer delFlag, List<Long> orgIds, Pageable pageable);
 
     Page<User> findByDelFlagAndRealNameContaining(Integer delFlag, String keyword, Pageable pageable);
 

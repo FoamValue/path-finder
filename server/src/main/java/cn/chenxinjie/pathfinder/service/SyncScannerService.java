@@ -261,7 +261,7 @@ public class SyncScannerService {
         if (cached == null) {
             User u = userRepository.findByUsernameAndDelFlag("admin", 0)
                     .orElseThrow(() -> new IllegalStateException("admin 用户不存在，无法执行目录导入"));
-            cached = new AuthUser(u.getId(), u.getUsername(), u.getRealName(), "ADMIN", u.getDeptId(),
+            cached = new AuthUser(u.getId(), u.getUsername(), u.getRealName(), "ADMIN", u.getOrgId(),
                     u.getMustChangePassword());
             admin = cached;
         }

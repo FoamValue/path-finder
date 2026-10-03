@@ -16,14 +16,14 @@ public class AuthUser {
     private String username;
     private String realName;
     private String roleCode;
-    private Long deptId;
+    private Long orgId;
     private Integer mustChangePassword;
 
     public boolean isAdmin() {
         return "ADMIN".equals(roleCode);
     }
 
-    public boolean isDeptAdmin() {
-        return "DEPT_ADMIN".equals(roleCode);
+    public boolean isOrgAdmin() {
+        return "ORG_ADMIN".equals(roleCode);
     }
 }

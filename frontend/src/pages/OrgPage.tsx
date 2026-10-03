@@ -14,21 +14,21 @@ import {
 } from 'antd';
 import { ApartmentOutlined, PlusOutlined, EditOutlined, DeleteOutlined } from '@ant-design/icons';
 import { del, get, post, put } from '../api/client';
-import type { DeptNode } from '../api/types';
+import type { OrgNode } from '../api/types';
 
-export default function DeptPage() {
-  const [tree, setTree] = useState<DeptNode[]>([]);
+export default function OrgPage() {
+  const [tree, setTree] = useState<OrgNode[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [parentId, setParentId] = useState<number>(0);
   const [parentName, setParentName] = useState('');
-  const [editing, setEditing] = useState<DeptNode | null>(null);
+  const [editing, setEditing] = useState<OrgNode | null>(null);
   const [form] = Form.useForm();
 
   const fetchTree = useCallback(async () => {
     setLoading(true);
     try {
-      setTree(await get<DeptNode[]>('/api/dept/tree'));
+      setTree(await get<OrgNode[]>('/api/org/tree'));
     } finally {
       setLoading(false);
     }
@@ -38,7 +38,7 @@ export default function DeptPage() {
     fetchTree();
   }, [fetchTree]);
 
-  const createChild = (parent: DeptNode | null) => {
+  const createChild = (parent: OrgNode | null) => {
     setEditing(null);
     setParentId(parent ? parent.id : 0);
     setParentName(parent ? parent.name : '根组织');
@@ -46,7 +46,7 @@ export default function DeptPage() {
     setOpen(true);
   };
 
-  const editDept = (node: DeptNode) => {
+  const editOrg = (node: OrgNode) => {
     setEditing(node);
     setParentId(node.parentId);
     setParentName(node.parentId === 0 ? '根组织' : findName(tree, node.parentId) || '');
@@ -54,7 +54,7 @@ export default function DeptPage() {
     setOpen(true);
   };
 
-  const findName = (nodes: DeptNode[], id: number): string | undefined => {
+  const findName = (nodes: OrgNode[], id: number): string | undefined => {
     for (const n of nodes) {
       if (n.id === id) return n.name;
       if (n.children?.length) {
@@ -68,25 +68,25 @@ export default function DeptPage() {
   const submit = async () => {
     const v = await form.validateFields();
     if (editing) {
-      await put(`/api/dept/${editing.id}`, v);
-      message.success('部门已更新');
+      await put(`/api/org/${editing.id}`, v);
+      message.success('组织已更新');
     } else {
-      await post('/api/dept', { ...v, parentId });
-      message.success('部门已创建');
+      await post('/api/org', { ...v, parentId });
+      message.success('组织已创建');
     }
     setOpen(false);
     fetchTree();
   };
 
   const remove = async (id: number) => {
-    await del(`/api/dept/${id}`);
-    message.success('部门已删除');
+    await del(`/api/org/${id}`);
+    message.success('组织已删除');
     fetchTree();
   };
 
   const columns = [
     {
-      title: '部门名称',
+      title: '组织名称',
       dataIndex: 'name',
       render: (name: string) => (
         <Space>
@@ -111,19 +111,19 @@ export default function DeptPage() {
     {
       title: '操作',
       width: 260,
-      render: (_: unknown, row: DeptNode) => (
+      render: (_: unknown, row: OrgNode) => (
         <Space size="small">
-          <Tooltip title={`在「${row.name}」下新增子部门`}>
+          <Tooltip title={`在「${row.name}」下新增子组织`}>
             <Button size="small" icon={<PlusOutlined />} onClick={() => createChild(row)}>
-              新增子部门
+              新增子组织
             </Button>
           </Tooltip>
-          <Button size="small" icon={<EditOutlined />} onClick={() => editDept(row)}>
+          <Button size="small" icon={<EditOutlined />} onClick={() => editOrg(row)}>
             编辑
           </Button>
           <Popconfirm
-            title="确认删除该部门？"
-            description="存在子部门或部门空间下存在文件时将被阻止"
+            title="确认删除该组织？"
+            description="存在子组织或组织空间下存在文件时将被阻止"
             onConfirm={() => remove(row.id)}
           >
             <Button size="small" danger icon={<DeleteOutlined />} />
@@ -136,7 +136,7 @@ export default function DeptPage() {
   return (
     <Space direction="vertical" style={{ width: '100%' }} size="middle">
       <Button type="primary" icon={<PlusOutlined />} onClick={() => createChild(null)}>
-        新增根部门
+        新增根组织
       </Button>
       <Table
         rowKey="id"
@@ -148,7 +148,7 @@ export default function DeptPage() {
         size="middle"
       />
       <Modal
-        title={editing ? '编辑部门' : `新增部门（上级：${parentName}）`}
+        title={editing ? '编辑组织' : `新增组织（上级：${parentName}）`}
         open={open}
         onCancel={() => setOpen(false)}
         onOk={submit}
@@ -157,8 +157,8 @@ export default function DeptPage() {
         <Form form={form} layout="vertical">
           <Form.Item
             name="name"
-            label="部门名称"
-            rules={[{ required: true, message: '请输入部门名称' }]}
+            label="组织名称"
+            rules={[{ required: true, message: '请输入组织名称' }]}
           >
             <Input placeholder="如：研发部" />
           </Form.Item>

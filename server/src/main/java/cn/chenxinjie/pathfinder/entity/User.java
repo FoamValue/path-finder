@@ -26,8 +26,8 @@ public class User extends BaseEntity {
     @Column(name = "real_name", nullable = false, length = 64)
     private String realName;
 
-    @Column(name = "dept_id", nullable = false)
-    private Long deptId;
+    @Column(name = "org_id", nullable = false)
+    private Long orgId;
 
     @Column(name = "status", nullable = false)
     private Integer status = 1;

@@ -16,7 +16,7 @@ export interface AuthUser {
   username: string;
   realName: string;
   roleCode: string;
-  deptId: number;
+  orgId: number;
   mustChangePassword: number;
 }
 
@@ -32,7 +32,7 @@ export interface FileInfo {
   fileMd5: string;
   fileType: string;
   spaceType: string;
-  deptId: number;
+  orgId: number;
   ownerId: number;
   ownerName: string;
   creatorName: string;
@@ -41,21 +41,21 @@ export interface FileInfo {
   createdAt: string;
 }
 
-export interface DeptNode {
+export interface OrgNode {
   id: number;
   parentId: number;
   name: string;
   sortOrder: number;
   status: number;
-  children: DeptNode[];
+  children: OrgNode[];
 }
 
 export interface UserVo {
   id: number;
   username: string;
   realName: string;
-  deptId: number;
-  deptName: string;
+  orgId: number;
+  orgName: string;
   roleCode: string;
   status: number;
   mustChangePassword: number;
