@@ -1,188 +1,238 @@
-# PathFinder 文件管理系统
+<div align="center">
 
-> 寓意「寻找系统路径」——为个人或小型企业提供统一、安全、可审计的内容文件管理。
+# PathFinder
 
-PathFinder 是一个**单组织私有部署**的文件管理系统，解决「文件放哪、谁能看、如何找」三个核心问题。支持大文件分片上传、断点续传、Range 断点下载、组织架构数据权限、操作审计。
+**Private, secure, auditable file management for individuals & small teams**
 
-## 功能特性
+> *Find the system path.* Unified content-file management with large-file upload, org-scoped data permission, operation audit, and one-click Docker deployment.
 
-- 🔐 **安全登录**：图片验证码 + 前端 RSA 加密传输密码 + BCrypt 存储；连续失败 5 次锁定 10 分钟；多登录踢出（单会话）；会话超时自动登出；首次登录强制改密
-- 📂 **大文件传输**：基于 `cn.chenxinjie:upload-file:1.0.0-rc.8` 分片上传 / 断点续传 / 秒传 / 分片 MD5 校验 / 异步合并 / Range 断点下载
-- 🗂 **数据权限**：个人空间 / 部门空间 / 公共空间三级归属，部门树可见性继承，服务端强制过滤
-- 🔍 **高效检索**：后端真分页（数据库层 `LIMIT/OFFSET`），文件名模糊搜索
-- ♻️ **软删除**：回收站保留 30 天，支持恢复与物理清除
-- 📝 **操作审计**：登录/上传/下载/删除/归属变更/改密全量留痕，12 个月归档
-- 💾 **磁盘持久化**：UUID + 日期分目录落盘，使用率 85% 告警，启动自动初始化目录
-- 🔄 **目录同步扫描**：定时扫描导入目录自动入库（默认管理员 + 公共空间），磁盘文件缺失/被更新自动标记并下载提示
-- 🐳 **容器化部署**：nginx:alpine（TLS）+ server + redis:9 + mysql:8，存储目录宿主机挂载 + 证书卷持久化
+---
 
-## 技术栈
+![Java 26](https://img.shields.io/badge/Java-26-007396?style=flat-square&logo=openjdk&logoColor=white)
+![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?style=flat-square&logo=spring&logoColor=white)
+![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white)
+![Ant Design 5](https://img.shields.io/badge/Ant%20Design-5-1677FF?style=flat-square)
+![Docker](https://img.shields.io/badge/Docker-Compose-2496ED?style=flat-square&logo=docker&logoColor=white)
+![License: MIT](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)
 
-| 层 | 技术 |
+**English** · [简体中文](./README.zh-CN.md)
+
+</div>
+
+---
+
+## What is PathFinder?
+
+PathFinder is a **single-org, privately deployed** file management system that answers three core questions about your files: *where to put them, who can see them, and how to find them.*
+
+It supports chunked upload with resume and de-dup, range-based resume download, org-scoped data permissions, and full operation auditing — packaged for a clean one-command deployment.
+
+## Features
+
+- 🔐 **Secure login** – image captcha, client-side RSA password encryption, BCrypt hashes; lockout for 10 minutes after 5 consecutive failures; single-session kickout, session-timeout auto logout, and forced password change on first login.
+- 📂 **Large-file transfer** – chunked upload / resume / instant de-dup via `cn.chenxinjie:upload-file:1.0.0`, per-chunk MD5 checks, async merge, and Range resume download.
+- 🗂 **Data permissions** – three-level ownership (personal / org / public), org-tree visibility inheritance, enforced server-side filtering.
+- 🔍 **Efficient search** – real server-side pagination (`LIMIT/OFFSET` on the database layer) plus fuzzy filename search.
+- ♻️ **Soft delete** – recycle bin retains files for 30 days, with restore and physical purge.
+- 📝 **Audit trail** – login / upload / download / delete / ownership-change / password-change are fully recorded and archived for 12 months.
+- 💾 **Disk persistence** – UUID + date-partitioned directories; 85% disk-usage alarm, auto-initialized directories on startup.
+- 🔄 **Directory sync** – a scheduled scanner ingests files dropped into an import directory and re-verifies on-disk state (missing / replaced files are flagged and download is blocked until refreshed).
+- 🐳 **Containerized deployment** – nginx:alpine (TLS) + server + redis:9 + mysql:8, host-mounted storage and persistent TLS certificate volume.
+
+## Tech Stack
+
+| Layer | Technology |
 |---|---|
-| 前端 | React 18 · TypeScript · Ant Design 5 / ProComponents · Vite |
-| 后端 | JDK 26 · Spring Boot 4.1.1 · Spring Security · Spring Data JPA · Jackson 3 |
-| 缓存 | Redis 9（会话 / 验证码 / 锁定 / 元数据缓存，TTL 固定基础值 + 随机抖动防雪崩） |
-| 数据库 | MySQL 8 |
-| 大文件组件 | `cn.chenxinjie:upload-file:1.0.0-rc.8`（rc.6 迁移到官方 jakarta HTTP 层：`upload-file-spring-boot-starter-jakarta` 自动装配 + 组件 `UploadServlet` 承载 `/upload`；confirm 经受信读 `TrustedUploadService.getTask().finalPath` 定位合并产物、入库后 `cancelUpload` 显式回收、任务级归属 `AccessControl.decide()`（越权 403）、`AccessControlListener` 越权审计（rc.8 带 method/URI/IP/UA 审计上下文）、`StorageCleanupService` 定时回收、全局配额 `quota.max-bytes` 可选；`/download` 默认关闭，业务下载走 `/api/file/download/{token}`。rc.7 修复 Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认；rc.8 新增 BOM 统一版本、`quota.store=redis` 启动自动对账 + 清理回收配额、分布式锁续租、`RedisTaskStore` 索引迁移原子化/`list()` 分批 MGET、`AccessContext` 审计上下文、`observability.access-log-scope`，并自动装配 `TrustedUploadService`。见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) / [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md)） |
-| 部署 | Docker Compose · nginx:alpine · TLS |
+| Frontend | React 18 · TypeScript · Ant Design 5 / ProComponents · Vite |
+| Backend | JDK 26 · Spring Boot 4.1.1 · Spring Security · Spring Data JPA · Jackson 3 |
+| Cache | Redis 9 (sessions / captcha / lockout / metadata; fixed base TTL + random jitter to resist cache stampede) |
+| Database | MySQL 8 |
+| Large-file component | `cn.chenxinjie:upload-file:1.0.0` (Spring Boot Starter jakarta, MIT) |
+| Deployment | Docker Compose · nginx:alpine · TLS |
 
-## 目录结构
+> The `upload-file` component provides chunked upload, resume, MD5 de-dup, async merge, Range download, storage cleanup, and optional global quota. Its integration history and upgrade notes live in [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) and [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md).
+
+## Project Structure
 
 ```
 path-finder/
-├── server/                    # 后端（Spring Boot Maven 单模块，包 cn.chenxinjie.pathfinder）
+├── server/                    # Backend (Spring Boot Maven, package cn.chenxinjie.pathfinder)
 │   └── src/main/java/cn/chenxinjie/pathfinder/
-│       ├── config/            # 安全/Redis/异常/调度器/Seed（上传组件由 starter 自动装配）
-│       ├── controller/        # auth/user/dept/file/recycle/log/storage
-│       ├── service/           # 业务服务与数据权限判定
-│       ├── repository/        # JPA Repository（真分页）
-│       ├── entity/            # JPA 实体（含 ts 字段只读映射）
-│       ├── security/          # Token 认证过滤器 / 当前用户上下文 / 上传归属授权与审计
-│       └── util/              # RSA / 验证码 / Redis TTL 策略 / 路径工具
-├── frontend/                  # 前端（Vite + React + AntD）
+│       ├── config/            # Security / Redis / exceptions / scheduler / seed
+│       ├── controller/        # auth / user / org / file / recycle / log / storage
+│       ├── service/           # Business services & data-permission decisions
+│       ├── repository/        # JPA repositories (real pagination)
+│       ├── entity/            # JPA entities (read-only ts field mapping)
+│       ├── security/          # Token filter / current-user context / upload authorization & audit
+│       ├── dto/               # Request / response DTOs
+│       └── util/              # RSA / captcha / Redis TTL policy / path helpers
+├── frontend/                  # Frontend (Vite + React + AntD)
 │   └── src/
-│       ├── pages/             # login/changePassword/fileList/recycle/user/dept/log/storage
-│       ├── components/        # MainLayout / UploadModal（分片上传）
-│       ├── api/               # 请求封装与类型
-│       └── utils/             # RSA 加密 / 分片 MD5 / 容量格式化
-├── docker/                    # docker-compose + nginx.conf + Dockerfile
-├── scripts/backup.sh          # 备份脚本（存储+MySQL+Redis）
+│       ├── pages/             # login / changePassword / fileList / recycle / user / org / log / storage
+│       ├── components/        # MainLayout / UploadModal (chunked upload)
+│       ├── api/               # Request wrapper & types
+│       └── utils/             # RSA encryption / chunk MD5 / size formatting
+├── docker/                    # docker-compose + nginx.conf + Dockerfiles
+├── scripts/backup.sh          # Backup script (storage + MySQL + Redis)
 └── docs/                      # PRD / TSDD / PLAN / TESTCASES / REVIEW
 ```
 
-## 快速开始
+## Quick Start
 
-### 前置条件
+### Prerequisites
 
-- JDK 26、Maven 3.9+
+- JDK 26, Maven 3.9+
 - Node.js 20+
-- Redis（本地 `docker run -d -p 6379:6379 redis:7` 即可开发调试）
+- Redis (for local dev, `docker run -d -p 6379:6379 redis:7` is enough)
 
-### 1. 启动后端
+### 1. Start the backend
 
 ```bash
 cd server
 mvn spring-boot:run
-# 服务地址 http://localhost:8080
+# Service at http://localhost:8080
 ```
 
-> 数据库为 MySQL 8（`pathfinder` 库，需先就绪）；连接参数见下方环境变量。
+> Requires MySQL 8 (database `pathfinder`); connection parameters are set via the env vars below.
 
-### 2. 启动前端
+### 2. Start the frontend
 
 ```bash
 cd frontend
 npm install
 npm run dev
-# 浏览器访问 http://localhost:8000（/api、/upload、/captcha 等已代理到 8080）
+# Browser at http://localhost:8000 (/api, /upload, /captcha are proxied to 8080)
 ```
 
-### 3. 初始账号
+### 3. Initial account
 
-| 账号 | 密码 | 说明 |
+| Account | Password | Note |
 |---|---|---|
-| `admin` | `Init@123` | 系统管理员，首次登录强制改密 |
+| `admin` | `Init@123` | System administrator; forced password change on first login |
 
-## 配置说明
+## Configuration
 
-核心环境变量（覆盖 `server/src/main/resources/application.yml` 默认值）：
+Core environment variables (override the defaults in `server/src/main/resources/application.yml`):
 
-| 变量 | 默认 | 说明 |
+| Variable | Default | Description |
 |---|---|---|
-| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DB` / `MYSQL_USER` / `MYSQL_PASSWORD` | localhost / 3306 / pathfinder / pathfinder / pathfinder123 | MySQL 连接（默认主配置，无需 profile） |
-| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | localhost / 6379 / 空 | Redis 连接 |
-| `STORAGE_ROOT` | `./data/storage` | 文件存储根目录（files/upload/del/tmp/archive） |
-| `RSA_PRIVATE_KEY_PATH` | 空 | RSA 私钥文件路径，生产挂载持久化，避免重启后密钥变更 |
-| `CAPTCHA_ENABLED` | true | 登录验证码开关；仅自动化测试部署置 false（绕过验证码），生产必须保持 true |
-| `ADMIN_BOOTSTRAP_PASSWORD` | 空 | 空库 Seed 时给首个 admin 的固定密码（配置后不强制改密），用于可重复的 E2E 种子账号 |
-| `SYNC_ENABLED` | true | 目录同步扫描开关 |
-| `SYNC_WATCH_DIR` | `./data/import`（Docker 部署为 `/data/storage/import`） | 外部导入目录，放置其中的文件会被定时扫描自动入库（默认管理员 + 公共空间） |
-| `SYNC_INTERVAL` | `5m` | 同步扫描间隔（如 `5m` / `1h`） |
-| `SYNC_SKIP_RECENT_SECONDS` | 30 | 跳过最近 N 秒内写入的文件（防半写） |
-| `SYNC_DEDUP_BY_MD5` | true | 导入时按 MD5 去重 |
-| `UPLOAD_QUOTA_MAX_BYTES` | 0（关闭） | upload-file 组件全局容量配额（字节），超限上传返回 507 |
+| `MYSQL_HOST` / `MYSQL_PORT` / `MYSQL_DB` / `MYSQL_USER` / `MYSQL_PASSWORD` | localhost / 3306 / pathfinder / pathfinder / pathfinder123 | MySQL connection |
+| `REDIS_HOST` / `REDIS_PORT` / `REDIS_PASSWORD` | localhost / 6379 / *(blank)* | Redis connection |
+| `STORAGE_ROOT` | `./data/storage` | File storage root (files/upload/del/tmp/archive) |
+| `RSA_PRIVATE_KEY_PATH` | *(blank)* | Path to the RSA private key; mount a persistent file in production so the key survives restarts |
+| `CAPTCHA_ENABLED` | `true` | Login captcha switch; set `false` **only** for automation tests — must stay `true` in production |
+| `ADMIN_BOOTSTRAP_PASSWORD` | *(blank)* | Fixed password for the first seeded `admin` (skips forced change), used for reproducible E2E seed accounts |
+| `SYNC_ENABLED` | `true` | Directory sync scanner switch |
+| `SYNC_WATCH_DIR` | `./data/import` (Docker: `/data/storage/import`) | External import directory, automatically ingested by the scanner (admin + public space) |
+| `SYNC_INTERVAL` | `5m` | Sync scan interval (e.g. `5m` / `1h`) |
+| `SYNC_SKIP_RECENT_SECONDS` | 30 | Skip files written within the last N seconds (avoid half-written files) |
+| `SYNC_DEDUP_BY_MD5` | `true` | Deduplicate imports by MD5 |
+| `UPLOAD_QUOTA_MAX_BYTES` | 0 (disabled) | Global quota (bytes) for the upload-file component; returns 507 when exceeded |
 
-### 存储根目录
+### Storage root
 
-`STORAGE_ROOT` 为文件存储根目录，启动时自动初始化以下子目录：
+`STORAGE_ROOT` is the storage root; these subdirectories are auto-initialized on startup:
 
-| 目录 | 用途 |
+| Directory | Purpose |
 |---|---|
-| `files/` | 正式文件（`files/{yyyy-MM-dd}/{uuid}.{ext}`，UUID + 日期分目录落盘） |
-| `upload/` | 分片上传暂存（分片 `chunks/`、合并产物 `files/`） |
-| `del/` | 回收站物理文件（软删除后移入，恢复时迁回） |
-| `tmp/` | 批量下载 ZIP 等临时文件 |
-| `archive/` | 审计日志归档 CSV |
-| `import/` | 外部导入目录（Docker 部署下位于存储根目录内，见上 `SYNC_WATCH_DIR`） |
+| `files/` | Live files (`files/{yyyy-MM-dd}/{uuid}.{ext}`, UUID + date-partitioned) |
+| `upload/` | Chunked-upload staging (chunks under `chunks/`, merged results under `files/`) |
+| `del/` | Physically removed files in the recycle bin (moved here on soft delete, moved back on restore) |
+| `tmp/` | Temp files such as batch-download ZIPs |
+| `archive/` | Archived audit-log CSV |
+| `import/` | External import directory (inside the storage root under Docker, see `SYNC_WATCH_DIR`) |
 
-**目录同步扫描**：定时（默认 5 分钟，单线程）扫描 `import/`，将新文件按约定命名迁入 `files/` 并入库（归属默认管理员、公共空间）；同时校验所有已入库文件的磁盘状态——物理文件缺失标记为「目录文件已被删除」并拦截下载，内容被替换标记为「源文件已被更新」，下载新版后自动复位。扫描器只读校验，绝不修改或删除磁盘文件。
+**Directory sync**: a single-threaded scanner (default every 5 minutes) ingests files from `import/`, moves them into `files/`, and registers them in the database (owner = admin, space = public). It also re-checks the on-disk state of every stored file — a missing physical file is flagged as *deleted from directory* and download is blocked; a replaced file is flagged as *source updated* and download returns a fresh copy. The scanner is read-only and never modifies or deletes disk files.
 
-Redis TTL 策略：所有写入默认「固定基础值 + 随机抖动（±20%）」防缓存雪崩；业务精确语义（验证码/锁定/会话/下载令牌）显式覆盖并关闭抖动，详见 TSDD 第 7 章。
+**Redis TTL policy**: writes use a fixed base value + random jitter (±20%) to prevent cache stampede; business-critical semantics (captcha / lockout / session / download token) explicitly override and disable jitter — see TSDD §7.
 
-## Docker 部署
+## Docker Deployment
+
+### Option 1 — HTTP (no TLS, no certificates) — recommended for quick start
+
+Best for local / LAN / intranet use. **No certificates required** — nginx serves plain HTTP on port 80.
 
 ```bash
-# 1. 构建后端与前端镜像（前端为多阶段构建，自动 npm build）
+# 1. Build backend & frontend images (frontend is a multi-stage build that runs `npm build`)
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.http.yml build
+
+# 2. Start (no certs to mount)
+docker compose -f docker/docker-compose.yml -f docker/docker-compose.http.yml up -d
+
+# 3. Open http://<host>
+```
+
+- The `.http.yml` override swaps nginx to an HTTP-only config (no `443`, no SSL files); the published `443` port is simply left unused.
+- Offline / when Docker Hub is unreachable: add the local override so Redis falls back to a locally cached image (this combination was verified by a smoke test):
+
+  ```bash
+  docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml -f docker/docker-compose.http.yml up -d
+  ```
+
+  `.local.yml` swaps `redis:9-alpine` → the locally cached `redis:7` (the base image still tries to pull `redis:9-alpine`, which fails without network access).
+- See the configuration and storage notes in the HTTPS section below (they apply to both modes).
+
+### Option 2 — HTTPS (with mounted certificates)
+
+For production / public exposure. This is the default config; **it requires TLS certificate files** in a `certs` volume (nginx fails to start if `fullchain.pem` / `privkey.pem` are missing).
+
+```bash
+# 1. Build backend & frontend images
 docker compose -f docker/docker-compose.yml build
 
-# 2. 挂载 TLS 证书后启动
+# 2. Mount your TLS certificates, then start
 mkdir -p certs && cp fullchain.pem certs/ && cp privkey.pem certs/
 docker compose -f docker/docker-compose.yml up -d
 ```
 
-- 入口：`https://<host>/`（80 端口自动重定向 HTTPS）
-- 文件存储：宿主机目录绑定挂载到容器 `/data/storage`，通过 `docker/.env` 中 `STORAGE_HOST_DIR` 指定（默认 `./data`，容器内即存储根目录 `STORAGE_ROOT=/data/storage`，导入目录 `SYNC_WATCH_DIR=/data/storage/import`）
-- 数据卷：`mysql-data`、`redis-data`、`rsa-key`、`certs`
+- Entry point: `https://<host>/` (port 80 auto-redirects to HTTPS)
+- File storage: host directory bind-mounted to `/data/storage` in the container, set via `STORAGE_HOST_DIR` in `docker/.env` (default `./data`, which becomes container `STORAGE_ROOT=/data/storage`, import dir `SYNC_WATCH_DIR=/data/storage/import`)
+- Data volumes: `mysql-data`, `redis-data`, `rsa-key`, `certs`
 
-> 本地部署（Docker Hub 不可达，本机已有 redis:7 镜像）时叠加 local 覆盖文件：
+> For local deployment when Docker Hub is unreachable (using a locally cached `redis:7` image), layer the local override file:
 > `docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml up -d`
+> (works together with `.http.yml`: `-f docker/docker-compose.yml -f docker/docker-compose.local.yml -f docker/docker-compose.http.yml`)
 
-## 测试
+## Testing
 
 ```bash
-cd server && mvn test          # 后端单元/集成测试（JUnit 5 + Mockito；集成用例需 MySQL pathfinder_test）
-cd frontend && npm test        # 前端单元测试（Vitest）
+cd server && mvn test          # Backend unit/integration tests (JUnit 5 + Mockito; integration cases need MySQL pathfinder_test)
+cd frontend && npm test        # Frontend unit tests (Vitest)
 ```
 
-后端集成测试运行前先就绪 MySQL/Redis 测试库（容器化）：
+Before backend integration tests, bring up the MySQL/Redis test databases in containers:
 
 ```bash
 docker compose -f docker/docker-compose.yml -f docker/docker-compose.local.yml -f docker/docker-compose.test.yml up -d mysql redis
-# 然后 cd server && mvn test
+# then: cd server && mvn test
 ```
 
-E2E（Playwright + 本机 Chrome，独立 Docker E2E 栈，跑完自动恢复原部署栈）：
+E2E (Playwright + local Chrome, via an isolated Docker E2E stack; the original stack is auto-restored when it finishes):
 
 ```bash
 bash scripts/run-e2e-docker.sh
-# 等价：down 现有栈 → 重置 pathfinder_test → 以验证码绕过 + 种子账号启动 E2E 栈
-#       → npm run test:e2e（01/02/03 号用例）→ EXIT 时恢复原栈
+# Equivalent to: down current stack → reset pathfinder_test → start E2E stack with captcha bypass + seed account
+#                → npm run test:e2e (case 01/02/03) → restore original stack on exit
 ```
 
-E2E 覆盖：登录页冒烟、TC-E2E-001 全链路（上传/搜索/下载/归属/删除/回收站恢复/审计）、TC-E2E-003 越权拦截与强制改密。测试专用开关均默认关闭，生产不生效。
+E2E coverage includes login smoke test, the full TC-E2E-001 flow (upload / search / download / ownership / delete / recycle restore / audit), and TC-E2E-003 authorization bypass & forced password change. All test switches default to off and never take effect in production.
 
-覆盖率门禁（见 PRD §6）：后端整体行覆盖 ≥80%、核心模块 ≥85%；前端核心交互 ≥70%。
+Coverage gates (see PRD §6): overall backend line coverage ≥ 80%, core modules ≥ 85%; frontend core interactions ≥ 70%.
 
-## 文档
+## Documentation
 
-| 文档 | 说明 |
+| Document | Description |
 |---|---|
-| [PRD](docs/PRD-PathFinder-v1.0.0.md) | 产品需求（用户故事 / 功能需求 / 数据权限模型） |
-| [TSDD](docs/design/TSDD-PathFinder-v1.0.0.md) | 技术详细设计（架构 / 数据库 / 接口 / 安全 / 组件集成 / 缓存 / 部署） |
-| [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | 敏捷迭代计划（Sprint / 任务卡 / DoD） |
-| [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | 测试用例（110+，含数据权限矩阵） |
-| [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | 生产上线基准审查与修订记录 |
-| [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) | 决策记录：组件 jakarta starter 迁移（rc.5 暂不迁移 → rc.6 撤销条件触发后**已迁移**） |
-| [UPGRADE starter](docs/design/UPGRADE-upload-file-starter-jakarta.md) | rc.6 迁移执行清单：坐标替换 / 删改（C1~C8）/ 契约差异 / 审计迁移 / 验收与回滚（**已执行**） |
-| [CHANGELOG](CHANGELOG.md) | 变更记录（含 `upload-file` 组件 rc.3 → rc.4 → rc.5 → rc.6 → rc.7 → rc.8 升级条目） |
-
-## 已知说明
-
-- 大文件组件 `cn.chenxinjie:upload-file` 早期 starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容，rc.3~rc.5 采用 `upload-file-core` 手工装配（TSDD §11 风险预案）。rc.6 组件补齐商业化 HTTP 层可控接入（`endpoint`/`http`/`multipart` 开关、`AccessControl.decide()`、`AccessControlListener`、`UploadErrorRenderer`），本工程据此**迁移到 `upload-file-spring-boot-starter-jakarta`**：删除 `UploadFileConfig`/`UploadController`，`/upload` 由组件 `UploadServlet` 承载，`/download` 默认关闭（最小暴露），接口契约不变。rc.7 进一步收口存储正确性与扩展点一致性（Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`）；rc.8 收口 GA 前的最后一批能力（`upload-file-bom`、`quota.store=redis` 启动自动对账 + 清理回收配额、分布式 identifier 锁持有期续租、`RedisTaskStore` 索引迁移原子化与 `list()` 分批 MGET、`AccessContext`/`AccessContextHolder` 审计上下文与监听器 6 参重载、`observability.access-log-scope` 降噪、starter 自动装配 `TrustedUploadService`）。本工程已升级并适配（`server/pom.xml` 经 `upload-file-bom:1.0.0-rc.8` 统一版本；移除手写 `UploadTrustedConfig`；越权审计改用 `AccessContext` 记录 method/URI/IP/UA，详见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) / [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md)）。
-- 组件 `/upload` 失败响应体为组件端点模型（`http.error-body=legacy`），前端仅消费 HTTP 状态码与文本，兼容；越权统一返回 403。
-- v1.0.0 为单机部署形态（PRD 明确非目标），多实例与在线预览/全文检索见版本规划。
+| [PRD](docs/PRD-PathFinder-v1.0.0.md) | Product requirements (user stories / functional requirements / data-permission model) |
+| [USER-MANUAL](docs/USER-MANUAL-PathFinder-v1.0.0.md) | End-user manual |
+| [TSDD](docs/design/TSDD-PathFinder-v1.0.0.md) | Technical design (architecture / database / APIs / security / component integration / caching / deployment) |
+| [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | Agile iteration plan (sprints / task cards / definition of done) |
+| [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | Test cases (110+, incl. data-permission matrix) |
+| [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | Production-release baseline review & revision log |
+| [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) | Decision record: jakarta starter migration of the upload component |
+| [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md) | Migration checklist (coordinates / contract / audit / acceptance & rollback) |
+| [CHANGELOG](CHANGELOG.md) | Version history |
 
 ## License
 
-MIT（大文件传输组件 `cn.chenxinjie:upload-file` 为 MIT 协议）。
+MIT — the large-file transfer component `cn.chenxinjie:upload-file` is also MIT-licensed.

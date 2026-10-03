@@ -1,0 +1,14 @@
+# HTTP-only override — run PathFinder WITHOUT mounting TLS certificates.
+#
+#   docker compose -f docker/docker-compose.yml -f docker/docker-compose.http.yml up -d
+#   # access via http://<host>
+#
+# This swaps nginx to a plain-HTTP config (no 443, no certs) and keeps only port 80.
+name: path-finder
+
+services:
+  nginx:
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.http.conf:/etc/nginx/conf.d/default.conf:ro
