@@ -5,8 +5,8 @@ import type { UploadFile } from 'antd';
 import { formatSize } from '../utils/file';
 import { runUpload } from '../utils/uploadTask';
 import { logger } from '../utils/logger';
-import { flatDepts } from '../utils/dept';
-import type { DeptNode } from '../api/types';
+import { flatOrgs } from '../utils/org';
+import type { OrgNode } from '../api/types';
 
 interface UploadItem {
   uid: string;
@@ -20,13 +20,13 @@ interface Props {
   open: boolean;
   onClose: () => void;
   onSuccess: () => void;
-  deptTree: DeptNode[];
+  orgTree: OrgNode[];
 }
 
-export default function UploadModal({ open, onClose, onSuccess, deptTree }: Props) {
+export default function UploadModal({ open, onClose, onSuccess, orgTree }: Props) {
   const [fileList, setFileList] = useState<UploadFile[]>([]);
   const [spaceType, setSpaceType] = useState('PERSONAL');
-  const [deptId, setDeptId] = useState<number | undefined>();
+  const [orgId, setOrgId] = useState<number | undefined>();
   const [items, setItems] = useState<UploadItem[]>([]);
   const [uploading, setUploading] = useState(false);
   const abortRef = useRef(false);
@@ -47,7 +47,7 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
   const reset = () => {
     resetFiles();
     setSpaceType('PERSONAL');
-    setDeptId(undefined);
+    setOrgId(undefined);
   };
 
   const close = () => {
@@ -69,7 +69,7 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
       const file = f.originFileObj as File;
       logger.info(`[UploadModal] 自动上传 uid=${f.uid} name=${file.name} size=${file.size}`);
       try {
-        await runUpload(file, spaceType, deptId, {
+        await runUpload(file, spaceType, orgId, {
           onProgress: (p) => updateItem(f.uid, { progress: p }),
         });
         updateItem(f.uid, { progress: 100, status: 'done' });
@@ -115,8 +115,8 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
     setFileList(fl);
     const newFiles = fl.filter((f) => !handledUidsRef.current.has(f.uid));
     if (!newFiles.length) return;
-    if (spaceType === 'DEPT' && !deptId) {
-      message.warning('部门空间必须选择部门，请先选择部门再上传');
+    if (spaceType === 'ORG' && !orgId) {
+      message.warning('组织空间必须选择组织，请先选择组织再上传');
       setFileList(fl.filter((f) => !newFiles.includes(f)));
       return;
     }
@@ -157,18 +157,18 @@ export default function UploadModal({ open, onClose, onSuccess, deptTree }: Prop
             style={{ width: 140 }}
             options={[
               { value: 'PERSONAL', label: '个人空间' },
-              { value: 'DEPT', label: '部门空间' },
+              { value: 'ORG', label: '组织空间' },
               { value: 'PUBLIC', label: '公共空间' },
             ]}
           />
-          {spaceType === 'DEPT' && (
+          {spaceType === 'ORG' && (
             <Select
               showSearch
-              placeholder="选择部门"
+              placeholder="选择组织"
               style={{ width: 180 }}
-              value={deptId}
-              onChange={setDeptId}
-              options={flatDepts(deptTree)}
+              value={orgId}
+              onChange={setOrgId}
+              options={flatOrgs(orgTree)}
               optionFilterProp="label"
             />
           )}

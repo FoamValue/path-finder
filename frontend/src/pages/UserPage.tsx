@@ -1,21 +1,21 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
 import { get, post, put, del } from '../api/client';
-import { flatDepts } from '../utils/dept';
-import type { DeptNode, UserVo } from '../api/types';
+import { flatOrgs } from '../utils/org';
+import type { OrgNode, UserVo } from '../api/types';
 
 export default function UserPage() {
   const [data, setData] = useState<UserVo[]>([]);
   const [total, setTotal] = useState(0);
   const [pageNum, setPageNum] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const [deptTree, setDeptTree] = useState<DeptNode[]>([]);
+  const [orgTree, setOrgTree] = useState<OrgNode[]>([]);
   const [editing, setEditing] = useState<UserVo | null>(null);
   const [open, setOpen] = useState(false);
   const [form] = Form.useForm();
 
-  const fetchDepts = useCallback(() => {
-    get<DeptNode[]>('/api/dept/tree').then(setDeptTree).catch(() => setDeptTree([]));
+  const fetchOrgs = useCallback(() => {
+    get<OrgNode[]>('/api/org/tree').then(setOrgTree).catch(() => setOrgTree([]));
   }, []);
 
   const fetchList = useCallback(async () => {
@@ -27,9 +27,9 @@ export default function UserPage() {
   }, [pageNum, pageSize]);
 
   useEffect(() => {
-    fetchDepts();
+    fetchOrgs();
     fetchList();
-  }, [fetchDepts, fetchList]);
+  }, [fetchOrgs, fetchList]);
 
   const openCreate = () => {
     setEditing(null);
@@ -42,7 +42,7 @@ export default function UserPage() {
     form.setFieldsValue({
       username: u.username,
       realName: u.realName,
-      deptId: u.deptId,
+      orgId: u.orgId,
       roleCode: u.roleCode,
     });
     setOpen(true);
@@ -81,7 +81,7 @@ export default function UserPage() {
   const columns = [
     { title: '用户名', dataIndex: 'username', width: 120 },
     { title: '姓名', dataIndex: 'realName', width: 120 },
-    { title: '部门', dataIndex: 'deptName', width: 120 },
+    { title: '组织', dataIndex: 'orgName', width: 120 },
     {
       title: '角色',
       dataIndex: 'roleCode',
@@ -89,7 +89,7 @@ export default function UserPage() {
       render: (r: string) => {
         const map: Record<string, [string, string]> = {
           ADMIN: ['系统管理员', 'red'],
-          DEPT_ADMIN: ['部门管理员', 'orange'],
+          ORG_ADMIN: ['组织管理员', 'orange'],
           USER: ['普通员工', 'blue'],
           VIEWER: ['访客', 'default'],
         };
@@ -158,17 +158,17 @@ export default function UserPage() {
           <Form.Item name="realName" label="姓名" rules={[{ required: true, message: '请输入姓名' }]}>
             <Input />
           </Form.Item>
-          <Form.Item name="deptId" label="部门" rules={[{ required: true, message: '请选择部门' }]}>
+          <Form.Item name="orgId" label="组织" rules={[{ required: true, message: '请选择组织' }]}>
             <Select
-              options={flatDepts(deptTree)}
-              placeholder="选择部门"
+              options={flatOrgs(orgTree)}
+              placeholder="选择组织"
             />
           </Form.Item>
           <Form.Item name="roleCode" label="角色" rules={[{ required: true }]}>
             <Select
               options={[
                 { value: 'ADMIN', label: '系统管理员' },
-                { value: 'DEPT_ADMIN', label: '部门管理员' },
+                { value: 'ORG_ADMIN', label: '组织管理员' },
                 { value: 'USER', label: '普通员工' },
                 { value: 'VIEWER', label: '访客' },
               ]}

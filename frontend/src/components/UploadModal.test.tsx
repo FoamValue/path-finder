@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import UploadModal from '../components/UploadModal';
-import type { DeptNode } from '../api/types';
+import type { OrgNode } from '../api/types';
 
 const mocks = vi.hoisted(() => ({
   runUpload: vi.fn(async (..._args: unknown[]) => undefined),
@@ -21,14 +21,14 @@ vi.mock('antd', async (importOriginal) => {
   };
 });
 
-const deptTree: DeptNode[] = [
+const orgTree: OrgNode[] = [
   { id: 1, parentId: 0, name: '研发部', sortOrder: 0, status: 1, children: [] },
 ];
 
 function renderModal() {
   const onClose = vi.fn();
   const onSuccess = vi.fn();
-  render(<UploadModal open onClose={onClose} onSuccess={onSuccess} deptTree={deptTree} />);
+  render(<UploadModal open onClose={onClose} onSuccess={onSuccess} orgTree={orgTree} />);
   const fileInput = () =>
     document.querySelector('input[type="file"]') as HTMLInputElement | null;
   const upload = (name = 'a.txt') => {
@@ -65,26 +65,26 @@ describe('上传弹窗（TC-UI-004）', () => {
     expect(mocks.messageSuccess).toHaveBeenCalled();
   });
 
-  it('选择部门空间但未选部门：上传被拦截并提示（TC-UP-004）', async () => {
+  it('选择组织空间但未选组织：上传被拦截并提示（TC-UP-004）', async () => {
     const { upload } = renderModal();
 
-    // 打开空间下拉并选择「部门空间」
+    // 打开空间下拉并选择「组织空间」
     const combobox = document.querySelector('.ant-select-selector') as HTMLElement;
     fireEvent.mouseDown(combobox);
-    const deptOption = (await screen.findByText('部门空间')).closest(
+    const orgOption = (await screen.findByText('组织空间')).closest(
       '.ant-select-item-option',
     );
-    expect(deptOption).toBeTruthy();
-    fireEvent.click(deptOption!);
+    expect(orgOption).toBeTruthy();
+    fireEvent.click(orgOption!);
 
-    // 等待部门下拉出现（空间状态已提交为 DEPT）
-    await screen.findByText('选择部门');
+    // 等待组织下拉出现（空间状态已提交为 ORG）
+    await screen.findByText('选择组织');
 
-    // 未选择具体部门时上传文件
+    // 未选择具体组织时上传文件
     upload('report.pdf');
 
     await waitFor(() => expect(mocks.messageWarning).toHaveBeenCalled());
-    expect(mocks.messageWarning).toHaveBeenCalledWith(expect.stringContaining('必须选择部门'));
+    expect(mocks.messageWarning).toHaveBeenCalledWith(expect.stringContaining('必须选择组织'));
     expect(mocks.runUpload).not.toHaveBeenCalled();
   });
 });

@@ -26,10 +26,10 @@ vi.mock('antd', async (importOriginal) => {
   };
 });
 
-const deptTree = [{ id: 1, parentId: 0, name: '研发部', sortOrder: 0, status: 1, children: [] }];
+const orgTree = [{ id: 1, parentId: 0, name: '研发部', sortOrder: 0, status: 1, children: [] }];
 const users = [
-  { id: 1, username: 'zhangsan', realName: '张三', deptId: 1, deptName: '研发部', roleCode: 'ADMIN', status: 1, mustChangePassword: 0, createdAt: '2026-08-01T10:00:00' },
-  { id: 2, username: 'lisi', realName: '李四', deptId: 1, deptName: '研发部', roleCode: 'USER', status: 0, mustChangePassword: 1, createdAt: '2026-08-02T10:00:00' },
+  { id: 1, username: 'zhangsan', realName: '张三', orgId: 1, orgName: '研发部', roleCode: 'ADMIN', status: 1, mustChangePassword: 0, createdAt: '2026-08-01T10:00:00' },
+  { id: 2, username: 'lisi', realName: '李四', orgId: 1, orgName: '研发部', roleCode: 'USER', status: 0, mustChangePassword: 1, createdAt: '2026-08-02T10:00:00' },
 ];
 
 function buttonByText(near: Element, text: string): HTMLElement | undefined {
@@ -50,13 +50,13 @@ describe('用户管理页（TC-ORG-007~013 前端）', () => {
     mocks.del.mockClear();
     mocks.messageSuccess.mockClear();
     mocks.get.mockImplementation((url: string) => {
-      if (url.includes('/api/dept/tree')) return Promise.resolve(deptTree);
+      if (url.includes('/api/org/tree')) return Promise.resolve(orgTree);
       if (url.includes('/api/user/page')) return Promise.resolve({ list: users, total: users.length });
       return Promise.reject(new Error('unhandled: ' + url));
     });
   });
 
-  it('渲染用户行：角色中文标签、启停用状态、部门名', async () => {
+  it('渲染用户行：角色中文标签、启停用状态、组织名', async () => {
     render(<UserPage />);
     expect(await screen.findByText('zhangsan')).toBeTruthy();
     expect(screen.getByText('张三')).toBeTruthy();

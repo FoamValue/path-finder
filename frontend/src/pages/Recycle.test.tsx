@@ -27,13 +27,13 @@ vi.mock('antd', async (importOriginal) => {
 
 const items = [
   { id: 11, fileId: 1, originalName: '旧合同.pdf', fileType: 'pdf', fileSize: 2048, deletedBy: 1, deletedAt: '2026-09-01T09:00:00', expireAt: '2026-10-01T09:00:00', spaceType: 'PERSONAL' },
-  { id: 12, fileId: 2, originalName: '旧报表.xlsx', fileType: 'xlsx', fileSize: 5120, deletedBy: 1, deletedAt: '2026-09-01T10:00:00', expireAt: '2026-10-01T10:00:00', spaceType: 'DEPT' },
+  { id: 12, fileId: 2, originalName: '旧报表.xlsx', fileType: 'xlsx', fileSize: 5120, deletedBy: 1, deletedAt: '2026-09-01T10:00:00', expireAt: '2026-10-01T10:00:00', spaceType: 'ORG' },
 ];
 
 function mockByUrl(role: string) {
   mocks.get.mockImplementation((url: string) => {
     if (url.includes('/api/auth/me')) {
-      return Promise.resolve({ id: 1, username: 'admin', realName: '系统管理员', roleCode: role, deptId: 1, mustChangePassword: 0 });
+      return Promise.resolve({ id: 1, username: 'admin', realName: '系统管理员', roleCode: role, orgId: 1, mustChangePassword: 0 });
     }
     if (url.includes('/api/recycle/page')) return Promise.resolve({ list: items, total: items.length });
     return Promise.reject(new Error('unhandled: ' + url));
