@@ -33,11 +33,12 @@ pathfinder:
   security:
     # RSA 私钥文件路径（可选，为空则启动时生成并写入 storage.root）
     private-key-path: ${RSA_PRIVATE_KEY_PATH:}
-    session-timeout: 30m
+    session-timeout: 480   # 登录会话有效期 8 小时（单位：分钟），供会话写盘 / Cookie 下发 / 滑动续期共用
     login-max-fail: 5
     login-lock-minutes: 10
     # CORS 显式白名单（禁止通配 + 凭据）；生产用路径形式变量覆盖
-    cors-allowed-origins: ${PATHFINDER_SECURITY_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8000}
+    # 默认覆盖本地 vite 开发（localhost/局域网 5173/8000）与 Docker/nginx 部署（https://localhost）
+    cors-allowed-origins: ${PATHFINDER_SECURITY_CORS_ALLOWED_ORIGINS:http://localhost:5173,http://localhost:8000,https://localhost,http://192.168.3.22:5173,http://192.168.3.22:8000}
     # 仅当部署在受信反向代理后置 true，才会读取 X-Forwarded-For 作为审计 IP
     trust-proxy-header: ${PATHFINDER_SECURITY_TRUST_PROXY_HEADER:false}
     # 验证码开关（仅测试环境置 false，生产必须保持 true）

@@ -157,6 +157,13 @@ public class AuthService {
         user.setPassword(passwordEncoder.encode(newPwd));
         user.setMustChangePassword(0);
         userRepository.save(user);
+        // 改密后失效当前用户的全部会话（安全最佳实践），前端 Cookie 随即失效
+        String userIdStr = String.valueOf(user.getId());
+        String existingToken = redis.opsForValue().get("auth:user:session:" + userIdStr);
+        if (existingToken != null) {
+            redis.delete("auth:session:" + existingToken);
+        }
+        redis.delete("auth:user:session:" + userIdStr);
         logService.record(current, "PASSWORD", "USER", String.valueOf(user.getId()), user.getUsername(), "修改密码", true);
     }
 

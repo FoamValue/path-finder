@@ -1,0 +1,5 @@
+# 仅用于一次性 QA：临时关闭验证码（跑完用原栈重启即还原，不落库、不改配置）
+services:
+  server:
+    environment:
+      CAPTCHA_ENABLED: "false"

@@ -40,9 +40,10 @@ trap restore_orig EXIT
 echo "[e2e] ① 停用现有 path-finder 栈（数据卷保留）"
 "${ORIG[@]}" down || true
 
-echo "[e2e] ② 构建后端产物与镜像（server；nginx 静态包未改动复用既有镜像）"
+echo "[e2e] ② 构建后端产物与镜像（server + nginx）"
 ( cd "$ROOT/server" && mvn -q -Dmaven.test.skip=true package )
-STORAGE_HOST_DIR="$E2E_STORAGE" ADMIN_BOOTSTRAP_PASSWORD="$ADMIN_PWD" "${E2E[@]}" build server
+# server 与 nginx 都重建：nginx 镜像构建时执行前端 npm run build，前端改动需一并打包
+STORAGE_HOST_DIR="$E2E_STORAGE" ADMIN_BOOTSTRAP_PASSWORD="$ADMIN_PWD" "${E2E[@]}" build server nginx
 
 echo "[e2e] ③ 启动中间件并重置 pathfinder_test"
 STORAGE_HOST_DIR="$E2E_STORAGE" ADMIN_BOOTSTRAP_PASSWORD="$ADMIN_PWD" "${E2E[@]}" up -d mysql redis

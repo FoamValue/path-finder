@@ -26,20 +26,20 @@ vi.mock('antd', async (importOriginal) => {
   };
 });
 
-const me = { id: 1, username: 'admin', realName: '系统管理员', roleCode: 'ADMIN', deptId: 1, mustChangePassword: 0 };
-const deptTree = [
+const me = { id: 1, username: 'admin', realName: '系统管理员', roleCode: 'ADMIN', orgId: 1, mustChangePassword: 0 };
+const orgTree = [
   { id: 1, parentId: 0, name: '研发部', sortOrder: 0, status: 1, children: [] },
 ];
 const files = [
-  { id: 1, originalName: '合同.pdf', fileType: 'pdf', fileSize: 2048, spaceType: 'PERSONAL', deptId: null, ownerName: '张三', creatorName: '张三', createdAt: '2026-09-01T10:00:00', diskStatus: 'READY', status: 'READY' },
-  { id: 2, originalName: '报表.xlsx', fileType: 'xlsx', fileSize: 4096, spaceType: 'DEPT', deptId: 1, ownerName: '李四', creatorName: '李四', createdAt: '2026-09-01T11:00:00', diskStatus: 'MISSING', status: 'READY' },
-  { id: 3, originalName: '设计稿.png', fileType: 'png', fileSize: 8192, spaceType: 'PUBLIC', deptId: null, ownerName: '王五', creatorName: '王五', createdAt: '2026-09-02T09:00:00', diskStatus: 'UPDATED', status: 'READY' },
+  { id: 1, originalName: '合同.pdf', fileType: 'pdf', fileSize: 2048, spaceType: 'PERSONAL', orgId: null, ownerName: '张三', creatorName: '张三', createdAt: '2026-09-01T10:00:00', diskStatus: 'READY', status: 'READY' },
+  { id: 2, originalName: '报表.xlsx', fileType: 'xlsx', fileSize: 4096, spaceType: 'ORG', orgId: 1, ownerName: '李四', creatorName: '李四', createdAt: '2026-09-01T11:00:00', diskStatus: 'MISSING', status: 'READY' },
+  { id: 3, originalName: '设计稿.png', fileType: 'png', fileSize: 8192, spaceType: 'PUBLIC', orgId: null, ownerName: '王五', creatorName: '王五', createdAt: '2026-09-02T09:00:00', diskStatus: 'UPDATED', status: 'READY' },
 ];
 
 function mockGetByUrl() {
   mocks.get.mockImplementation((url: string) => {
     if (url.includes('/api/auth/me')) return Promise.resolve(me);
-    if (url.includes('/api/dept/tree')) return Promise.resolve(deptTree);
+    if (url.includes('/api/org/tree')) return Promise.resolve(orgTree);
     if (url.includes('/api/user/page')) return Promise.resolve({ list: [{ id: 9, username: 'zhangsan', realName: '张三' }], total: 1 });
     if (url.includes('/api/file/page')) {
       return Promise.resolve({ list: files, total: files.length });

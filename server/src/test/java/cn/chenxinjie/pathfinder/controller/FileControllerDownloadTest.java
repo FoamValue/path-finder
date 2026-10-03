@@ -67,6 +67,31 @@ class FileControllerDownloadTest {
     }
 
     @Test
+    void previewContentTypes_mapOfficePdfTextToProperMime() throws Exception {
+        writeTextFile("a.md", "# 标题");
+        stubSingle("t-md", tempDir.resolve("a.md"), 1L, "a.md");
+        MockHttpServletResponse mdResp = download("t-md", null);
+        assertTrue(mdResp.getContentType().contains("text/plain"), "md 应为 text/plain");
+
+        writeTextFile("a.pdf", "%PDF-1.4");
+        stubSingle("t-pdf", tempDir.resolve("a.pdf"), 2L, "a.pdf");
+        MockHttpServletResponse pdfResp = download("t-pdf", null);
+        assertEquals("application/pdf", pdfResp.getContentType(), "pdf 应为 application/pdf");
+
+        writeTextFile("a.docx", "PK");
+        stubSingle("t-docx", tempDir.resolve("a.docx"), 3L, "a.docx");
+        MockHttpServletResponse docxResp = download("t-docx", null);
+        assertEquals("application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                docxResp.getContentType(), "docx 应为 OOXML 文档 MIME");
+
+        writeTextFile("a.xlsx", "PK");
+        stubSingle("t-xlsx", tempDir.resolve("a.xlsx"), 4L, "a.xlsx");
+        MockHttpServletResponse xlsxResp = download("t-xlsx", null);
+        assertEquals("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                xlsxResp.getContentType(), "xlsx 应为 OOXML 表格 MIME");
+    }
+
+    @Test
     void rangeStartEnd_returns206PartialContent() throws Exception {
         writeTextFile("a.txt", "0123456789");
         stubSingle("t1", tempDir.resolve("a.txt"), 5L, "a.txt");

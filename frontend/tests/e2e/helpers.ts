@@ -1,8 +1,11 @@
 import { expect, type Page } from '@playwright/test';
 
 /**
- * E2E 公共辅助：确定性种子账号登录、带 token 的 API 调用、AntD 弹窗交互。
+ * E2E 公共辅助：确定性种子账号登录、带会话的 API 调用、AntD 弹窗交互。
  * 依赖 Docker E2E 栈：验证码绕过 + bootstrap 账号（见 docker-compose.e2e.yml）。
+ *
+ * M2 会话迁移至 HttpOnly Cookie 后，前端 JS 不再读取 token，
+ * API 调用统一使用 Playwright 的 page.request（自动携带页面上下文 Cookie）。
  */
 
 export const E2E_ADMIN_PASSWORD = process.env.E2E_ADMIN_PASSWORD || 'E2e@12345';
@@ -30,56 +33,49 @@ export function charSpaced(text: string): RegExp {
   return new RegExp(esc.split('').join('\\s*'));
 }
 
-/** 当前页 localStorage 中的会话 token。 */
-export function tokenOf(page: Page): Promise<string | null> {
-  return page.evaluate(() => localStorage.getItem('pf_token'));
+/**
+ * 判断当前页面是否已有登录会话（Cookie 模式下 JS 读不到 HttpOnly Cookie，
+ * 改用 Playwright request 调 /api/auth/me 探测；返回 true 表示会话有效）。
+ */
+export async function hasSession(page: Page): Promise<boolean> {
+  const resp = await page.request.get('/api/auth/me');
+  return resp.status() === 200;
 }
 
-/** 以浏览器上下文直接调用后端 JSON API（附带当前 token），返回 {status, body}。 */
+/**
+ * 以页面会话调后端 JSON API（自动携带 Cookie，等同页面自身请求），返回 {status, body}。
+ * 使用 Playwright 原生 request API，比 page.evaluate(fetch) 更稳定可靠。
+ * 内置 15s 超时，避免证书/网络问题导致整测试挂起。
+ */
 export async function apiJson(
   page: Page,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
   url: string,
   body?: unknown,
 ): Promise<{ status: number; body: any }> {
-  const token = await tokenOf(page);
-  return page.evaluate(
-    async ({ method, url, body, token }) => {
-      const resp = await fetch(url, {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
-        body: body === undefined ? undefined : JSON.stringify(body),
-      });
-      let parsed: any = null;
-      try {
-        parsed = await resp.json();
-      } catch {
-        /* 非 JSON */
-      }
-      return { status: resp.status, body: parsed };
-    },
-    { method, url, body, token },
-  );
+  const options: Record<string, unknown> = { timeout: 15_000 };
+  if (body !== undefined) {
+    options.data = body;
+  }
+  const resp = await page.request[method.toLowerCase() as 'get' | 'post' | 'put' | 'delete'](url, options);
+  let parsed: any = null;
+  try {
+    parsed = await resp.json();
+  } catch {
+    /* 非 JSON 响应（如 403 HTML 错误页等）*/
+  }
+  return { status: resp.status(), body: parsed };
 }
 
-/** 获取文件下载内容（走 downloadToken + /api/file/download 两段式）。 */
+/**
+ * 获取文件下载内容（走 downloadToken + /api/file/download 两段式，凭 Cookie 会话）。
+ */
 export async function downloadFile(page: Page, fileId: number): Promise<{ status: number; text: string }> {
-  const token = await tokenOf(page);
-  if (!token) throw new Error('downloadFile 需要已登录的会话 token');
-  return page.evaluate(
-    async ({ fileId, token }) => {
-      const h = { Authorization: `Bearer ${token}` };
-      const r1 = await fetch(`/api/file/${fileId}/downloadToken`, { headers: h });
-      const j1 = await r1.json();
-      const r2 = await fetch(`/api/file/download/${j1.data.token}`, { headers: h });
-      const buf = await r2.arrayBuffer();
-      return { status: r2.status, text: new TextDecoder().decode(buf) };
-    },
-    { fileId, token },
-  );
+  const r1 = await page.request.get(`/api/file/${fileId}/downloadToken`);
+  const j1 = await r1.json();
+  const r2 = await page.request.get(`/api/file/download/${j1.data.token}`);
+  const buf = await r2.body();
+  return { status: r2.status(), text: buf.toString('utf-8') };
 }
 
 /** 按文件名在列表/回收站页定位表格行。 */

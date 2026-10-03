@@ -55,7 +55,7 @@ public class FileController {
         private String fileName;
         private Long fileSize;
         private String spaceType;
-        private Long deptId;
+        private Long orgId;
     }
 
     @Data
@@ -71,22 +71,22 @@ public class FileController {
     public static class BatchOwnerForm {
         private List<Long> ids;
         private String spaceType;
-        private Long deptId;
+        private Long orgId;
         private Long ownerId;
 
         public FileService.OwnerChangeForm toOwnerChangeForm() {
-            return new FileService.OwnerChangeForm(spaceType, deptId, ownerId);
+            return new FileService.OwnerChangeForm(spaceType, orgId, ownerId);
         }
     }
 
     @GetMapping("/page")
     public ApiResponse<PageResult<FileService.FileVo>> page(
             @RequestParam(required = false) String spaceType,
-            @RequestParam(required = false) Long deptId,
+            @RequestParam(required = false) Long orgId,
             @RequestParam(required = false) String keyword,
             @RequestParam(defaultValue = "1") int pageNum,
             @RequestParam(defaultValue = "20") int pageSize) {
-        return ApiResponse.ok(fileService.page(SecurityUtil.current(), spaceType, deptId, keyword, pageNum, pageSize));
+        return ApiResponse.ok(fileService.page(SecurityUtil.current(), spaceType, orgId, keyword, pageNum, pageSize));
     }
 
     @GetMapping("/{id}")
@@ -97,7 +97,7 @@ public class FileController {
     @PostMapping("/uploadTicket")
     public ApiResponse<FileService.UploadTicket> uploadTicket(@RequestBody UploadTicketForm form) {
         return ApiResponse.ok(fileService.uploadTicket(form.getFileName(), form.getFileSize(),
-                form.getSpaceType(), form.getDeptId(), SecurityUtil.current()));
+                form.getSpaceType(), form.getOrgId(), SecurityUtil.current()));
     }
 
     @PostMapping("/{id}/confirm")
@@ -148,22 +148,44 @@ public class FileController {
     }
 
     /**
-     * 下载（支持 Range 断点续传：200 / 206 / 416）。
+     * 下载（支持 Range 断点续传：200 / 206 / 416），attachment 触发浏览器保存。
      */
     @GetMapping("/download/{token}")
     public void download(@PathVariable String token,
                          @RequestHeader(value = "Range", required = false) String range,
                          HttpServletResponse response) throws IOException {
         FileService.DownloadTarget target = fileService.consumeToken(token);
-        Path path = fileService.resolveDownloadPath(target);
+        boolean served = streamFile(response, fileService.resolveDownloadPath(target), target.getFileName(), false, range);
+        if (served && target.getFileId() != null) {
+            fileService.refreshAfterDownload(target.getFileId());
+        }
+    }
+
+    /**
+     * 预览（inline 直读，鉴权由当前会话完成，支持 Range 供 PDF/视频内嵌）。
+     */
+    @GetMapping("/{id}/preview")
+    public void preview(@PathVariable Long id,
+                        @RequestHeader(value = "Range", required = false) String range,
+                        HttpServletResponse response) throws IOException {
+        FileService.DownloadTarget target = fileService.previewTarget(id, SecurityUtil.current());
+        streamFile(response, fileService.resolveDownloadPath(target), target.getFileName(), true, range);
+    }
+
+    private boolean streamFile(HttpServletResponse response, Path path, String fileName,
+                           boolean inline, String range) throws IOException {
         if (!Files.exists(path) || Files.isDirectory(path)) {
             throw BizException.notFound("文件不存在");
         }
-        String fileName = target.getFileName();
         long size = Files.size(path);
-        response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
-                "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20"));
-        response.setContentType(guessContentType(fileName));
+        response.setHeader(HttpHeaders.CONTENT_TYPE, guessContentType(fileName));
+        response.setHeader("X-Content-Type-Options", "nosniff");
+        if (inline) {
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION, "inline");
+        } else {
+            response.setHeader(HttpHeaders.CONTENT_DISPOSITION,
+                    "attachment; filename*=UTF-8''" + java.net.URLEncoder.encode(fileName, "UTF-8").replace("+", "%20"));
+        }
         response.setHeader(HttpHeaders.ACCEPT_RANGES, "bytes");
 
         long start = 0;
@@ -185,7 +207,7 @@ public class FileController {
                 if (start >= size) {
                     response.setStatus(416);
                     response.setHeader(HttpHeaders.CONTENT_RANGE, "bytes */" + size);
-                    return;
+                    return false;
                 }
                 end = Math.min(end, size - 1);
                 response.setStatus(206);
@@ -207,9 +229,7 @@ public class FileController {
             }
             out.flush();
         }
-        if (target.getFileId() != null) {
-            fileService.refreshAfterDownload(target.getFileId());
-        }
+        return true;
     }
 
     private String guessContentType(String fileName) {
@@ -219,9 +239,31 @@ public class FileController {
             case "png" -> "image/png";
             case "jpg", "jpeg" -> "image/jpeg";
             case "gif" -> "image/gif";
+            case "webp" -> "image/webp";
+            case "bmp" -> "image/bmp";
+            case "svg" -> "image/svg+xml";
             case "zip" -> "application/zip";
+            case "html", "htm" -> "text/html; charset=UTF-8";
             case "txt", "log", "md" -> "text/plain; charset=UTF-8";
             case "csv" -> "text/csv; charset=UTF-8";
+            case "json" -> "application/json; charset=UTF-8";
+            case "xml" -> "application/xml; charset=UTF-8";
+            case "yaml", "yml", "ini", "properties", "sql", "ts", "tsx", "js", "java" -> "text/plain; charset=UTF-8";
+            case "mp4", "m4v" -> "video/mp4";
+            case "webm" -> "video/webm";
+            case "mov" -> "video/quicktime";
+            case "mp3" -> "audio/mpeg";
+            case "wav" -> "audio/wav";
+            case "m4a" -> "audio/mp4";
+            case "aac" -> "audio/aac";
+            case "flac" -> "audio/flac";
+            case "ogg", "oga" -> "audio/ogg";
+            case "doc" -> "application/msword";
+            case "docx" -> "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+            case "xls" -> "application/vnd.ms-excel";
+            case "xlsx" -> "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+            case "ppt" -> "application/vnd.ms-powerpoint";
+            case "pptx" -> "application/vnd.openxmlformats-officedocument.presentationml.presentation";
             default -> MediaType.APPLICATION_OCTET_STREAM_VALUE;
         };
     }
