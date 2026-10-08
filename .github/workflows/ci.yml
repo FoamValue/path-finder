@@ -1,0 +1,99 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ############################################################
+  # 后端：JDK 26 + Maven；依赖 MySQL 8 与 Redis 7 服务容器，
+  # 通过 application-test.yml 的环境变量注入连接参数。
+  ############################################################
+  backend:
+    name: backend (mvn test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: server
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: root
+          MYSQL_DATABASE: pathfinder_test
+          MYSQL_USER: pathfinder
+          MYSQL_PASSWORD: pathfinder123
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -proot"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+      redis:
+        image: redis:7-alpine
+        command: redis-server --requirepass pathfinder123
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli -a pathfinder123 ping"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 26 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '26'
+          cache: maven
+
+      - name: Run backend tests
+        env:
+          MYSQL_HOST: 127.0.0.1
+          MYSQL_PORT: 3306
+          MYSQL_DB: pathfinder_test
+          MYSQL_USER: pathfinder
+          MYSQL_PASSWORD: pathfinder123
+          REDIS_HOST: 127.0.0.1
+          REDIS_PORT: 6379
+          REDIS_PASSWORD: pathfinder123
+        run: mvn -B -ntp test
+
+  ############################################################
+  # 前端：Node + npm；tsc 类型检查 + Vite 生产构建 + Vitest 单测。
+  # 注意：Playwright E2E 依赖完整 Docker 栈（nginx TLS / 验证码绕过），
+  # 不在 PR/推送 CI 内跑，避免脆弱性。
+  ############################################################
+  frontend:
+    name: frontend (build + unit test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check & build
+        run: npm run build
+
+      - name: Unit tests
+        run: npm test
