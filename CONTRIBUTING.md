@@ -30,18 +30,19 @@ cd ../frontend && npm ci && npm run build
 - 功能建议请说明使用场景与预期收益。
 
 ### 2. 提交 Pull Request
-- 先派生（fork）仓库并新建功能分支：`feat/xxx` 或 `fix/xxx`。
+- **`main` 为保护分支，禁止直接提交**：所有改动都必须通过 PR 合入；PR 需 CI 全绿，合并时使用 **squash merge**。
+- 从最新的 `main` 拉功能分支：`feat/xxx` 或 `fix/xxx`；分支保持短生命周期，及时同步 `main`。
 - **一个 PR 只解决一个问题/特性**，保持改动最小化。
 - 遵循现有代码风格（Java / React / 命名规范见 `docs/` 与代码注释）。
 - 为新增逻辑补充**单元测试**；改动行为需通过既有测试，避免破坏现有功能。
-- 本地自测：后端 `mvn test`、前端 `npm test && npm run build` 全绿。
+- 本地自测：后端 `mvn test`、前端 `npm test && npm run build` 全绿（CI 也会在 PR 上自动跑这两项）。
 - 提交信息使用中文 `type(scope): 描述` 约定（如 `feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `build:`, `ci:`）。
 - PR 标题简短（< 70 字），正文说明动机与改动要点。
 
 ### 3. 分支与发布 / Branching & Releases
-- 默认分支为 `main`，`main` 始终可用。
-- 语义化版本（SemVer）；`v1.x.y` tag 表示发布点。
-- `CHANGELOG.md` 记录变更；进入 `[Unreleased]` 或随发布的版本小节。
+- 默认分支 `main`：受保护（仅 PR + squash 合并、禁强推/删除、对 owner 同样生效），始终可用。
+- 语义化版本（SemVer）；`v1.x.y` tag 表示发布点（用 `gh release` 建立正式 Release）。
+- 每次 squash 合并后，将提交/变更加载到 `CHANGELOG.md`（`[Unreleased]` 或随发布的版本小节）。
 
 ## 质量要求 / Quality Bar
 - 后端：`mvn test` 全绿（含授权/审计/上传流等）。
