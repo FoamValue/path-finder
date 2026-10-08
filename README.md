@@ -8,6 +8,7 @@
 
 ---
 
+[![CI](https://github.com/FoamValue/path-finder/actions/workflows/ci.yml/badge.svg)](https://github.com/FoamValue/path-finder/actions/workflows/ci.yml)
 ![Java 26](https://img.shields.io/badge/Java-26-007396?style=flat-square&logo=openjdk&logoColor=white)
 ![Spring Boot 4.1](https://img.shields.io/badge/Spring%20Boot-4.1.1-6DB33F?style=flat-square&logo=spring&logoColor=white)
 ![React 18](https://img.shields.io/badge/React-18-61DAFB?style=flat-square&logo=react&logoColor=white)
