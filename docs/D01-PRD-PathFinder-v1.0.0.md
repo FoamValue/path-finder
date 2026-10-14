@@ -261,8 +261,10 @@ PathFinder 定位为一个**自部署、面向单一组织**的轻量文件管�
 ```
 path-finder/
 ├── docs/                            # 文档目录
-│   ├── PRD-PathFinder-v1.0.0.md     #   产品需求文档
-│   ├── design/                      #   技术设计文档（TSDD/API 契约等）
+│   ├── index.md                     #   文档索引
+│   ├── D01-PRD-PathFinder-v1.0.0.md #   产品需求文档
+│   ├── D02-TSDD-PathFinder-v1.0.0.md#   技术设计文档
+│   ├── …                            #   D03~D09 各规格/ADR/升级文档
 │   └── assets/                      #   文档图片/附件
 ├── frontend/                        # 前端代码目录（React 18 + Ant Design Pro / UmiJS + TS）
 │   ├── src/
