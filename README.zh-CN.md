@@ -51,7 +51,7 @@ PathFinder 是一个**单组织私有部署**的文件管理系统，解决你�
 | 大文件组件 | `cn.chenxinjie:upload-file:1.0.0`（Spring Boot Starter jakarta，MIT） |
 | 部署 | Docker Compose · nginx:alpine · TLS |
 
-> `upload-file` 组件提供分片上传、断点续传、MD5 秒传、异步合并、Range 下载、存储清理与可选全局配额。其集成历程与升级说明见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) 与 [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md)。
+> `upload-file` 组件提供分片上传、断点续传、MD5 秒传、异步合并、Range 下载、存储清理与可选全局配额。其集成历程与升级说明见 [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md) 与 [UPGRADE](docs/D09-UPGRADE-upload-file-starter-jakarta.md)。
 
 ## 目录结构
 
@@ -224,14 +224,14 @@ E2E 覆盖：登录页冒烟、TC-E2E-001 全链路（上传 / 搜索 / 下载 /
 
 | 文档 | 说明 |
 |---|---|
-| [PRD](docs/PRD-PathFinder-v1.0.0.md) | 产品需求（用户故事 / 功能需求 / 数据权限模型） |
-| [USER-MANUAL](docs/USER-MANUAL-PathFinder-v1.0.0.md) | 用户手册 |
-| [TSDD](docs/design/TSDD-PathFinder-v1.0.0.md) | 技术详细设计（架构 / 数据库 / 接口 / 安全 / 组件集成 / 缓存 / 部署） |
-| [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | 敏捷迭代计划（Sprint / 任务卡 / DoD） |
-| [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | 测试用例（110+，含数据权限矩阵） |
-| [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | 生产上线基准审查与修订记录 |
-| [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) | 决策记录：上传组件 jakarta starter 迁移 |
-| [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md) | 迁移清单（坐标 / 契约 / 审计 / 验收与回滚） |
+| [PRD](docs/D01-PRD-PathFinder-v1.0.0.md) | 产品需求（用户故事 / 功能需求 / 数据权限模型） |
+| [USER-MANUAL](docs/D06-USER-MANUAL-PathFinder-v1.0.0.md) | 用户手册 |
+| [TSDD](docs/D02-TSDD-PathFinder-v1.0.0.md) | 技术详细设计（架构 / 数据库 / 接口 / 安全 / 组件集成 / 缓存 / 部署） |
+| [PLAN](docs/D03-PLAN-PathFinder-v1.0.0.md) | 敏捷迭代计划（Sprint / 任务卡 / DoD） |
+| [TESTCASES](docs/D04-TESTCASES-PathFinder-v1.0.0.md) | 测试用例（110+，含数据权限矩阵） |
+| [REVIEW](docs/D05-REVIEW-PathFinder-v1.0.0.md) | 生产上线基准审查与修订记录 |
+| [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md) | 决策记录：上传组件 jakarta starter 迁移 |
+| [UPGRADE](docs/D09-UPGRADE-upload-file-starter-jakarta.md) | 迁移清单（坐标 / 契约 / 审计 / 验收与回滚） |
 | [CHANGELOG](CHANGELOG.md) | 版本变更记录 |
 
 ## License

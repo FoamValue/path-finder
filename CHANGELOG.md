@@ -1,6 +1,6 @@
 # Changelog
 
-本文件记录 PathFinder 的变更。版本遵循语义化版本，`[Unreleased]` 为尚未发布的变更；发布时把条目移入对应版本小节并打 tag。功能基线见 [README](README.md) 与 [PRD](docs/PRD-PathFinder-v1.0.0.md)。
+本文件记录 PathFinder 的变更。版本遵循语义化版本，`[Unreleased]` 为尚未发布的变更；发布时把条目移入对应版本小节并打 tag。功能基线见 [README](README.md) 与 [PRD](docs/D01-PRD-PathFinder-v1.0.0.md)。
 
 ## [Unreleased]
 
@@ -23,7 +23,7 @@
   - **新增可选能力**：分布式 `IdentifierLockProvider`（`upload-file.lock.identifier-lock=redis`）、原子 `QuotaStore`（`upload-file.quota.store=redis`）、受信读门面 `TrustedUploadService`、`AbstractAccessControl` 基座、starter 安全默认告警、`ResumableDownloadService` `@Lazy`；
   - **代码适配**：`ResumableUploadService.getTask(String)` rc.7 起 `@Deprecated`；新增 `UploadTrustedConfig` 声明 `TrustedUploadService` Bean，`FileService.resolveMergedProduct` 改用受信读（显式无访问门控的可信服务端读）；`FileUploadFlowTest` 同步改用 `getTaskTrusted`。
   - 回归：`mvn test` 全绿（**161 例 / 0 失败**）。
-- 大文件组件 `cn.chenxinjie:upload-file` 由 `1.0.0-rc.5` 升级至 **`1.0.0-rc.6`**，并按 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) 撤销条件**迁移到官方 HTTP 层**（[UPGRADE 预案](docs/design/UPGRADE-upload-file-starter-jakarta.md) 已执行）：
+- 大文件组件 `cn.chenxinjie:upload-file` 由 `1.0.0-rc.5` 升级至 **`1.0.0-rc.6`**，并按 [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md) 撤销条件**迁移到官方 HTTP 层**（[UPGRADE 预案](docs/D09-UPGRADE-upload-file-starter-jakarta.md) 已执行）：
   - 依赖坐标：`upload-file-core` → **`upload-file-spring-boot-starter-jakarta`**（自动装配 core 服务并注册 `UploadServlet`），保留 `upload-file-store-redis`（starter 声明为 optional）；
   - 删除手工装配 `UploadFileConfig` 与自研 MVC 端点 `UploadController`；`/upload` 由组件 `UploadServlet` 承载（URL/action 集与协议不变，前端零改动）；
   - rc.6 端点开关：`endpoint.upload-enabled=true`、`endpoint.download-enabled=false`（最小暴露——业务下载仍走 `/api/file/download/{token}`，不暴露「已合并未确认」临时产物）；
@@ -32,7 +32,7 @@
   - **X1 越权审计迁移**：新增 `UploadAccessAuditListener`（`AccessControlListener` SPI），在组件决策点写 `FORBIDDEN success=0` 审计；Servlet 路径不再经 `@ControllerAdvice`，`GlobalExceptionHandler` 组件异常映射保留为防御性兜底且不再重复审计。
   - 测试：新增 `UploadOwnerAccessControlTest`、`UploadAccessAuditListenerTest`、`UploadEndpointWiringTest`（starter 装配 / `/upload` 注册 / `/download` 默认关闭）。
 - 大文件组件 `cn.chenxinjie:upload-file` 由 `1.0.0-rc.4` 升级至 **`1.0.0-rc.5`**（坐标 `upload-file-core` / `upload-file-store-redis`，core 手工装配不变）。rc.5 相对 rc.4 的 core/store 逻辑零改动（仅补齐测试），实质新增 `upload-file-servlet-jakarta` / `upload-file-spring-boot-starter-jakarta`（jakarta 适配）与 Boot 4 demo：
-  - 评估是否迁移 `upload-file-spring-boot-starter-jakarta` 后**决定不迁移**：starter 自动注册 `/upload` `/download` 原始 Servlet，与本工程自研 `UploadController`/`UploadFileConfig` 路径与职责冲突，且 core 手工装配已承载全部所需能力——理由与撤销条件见 [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md)；
+  - 评估是否迁移 `upload-file-spring-boot-starter-jakarta` 后**决定不迁移**：starter 自动注册 `/upload` `/download` 原始 Servlet，与本工程自研 `UploadController`/`UploadFileConfig` 路径与职责冲突，且 core 手工装配已承载全部所需能力——理由与撤销条件见 [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md)；
   - 依赖版本号核对点：rc.5 尚未发布至 Maven Central（本机经 `mvn install` 组件仓库本地就绪），CI/新环境需先完成组件 rc.5 发布。
 - 大文件组件 `cn.chenxinjie:upload-file` 由 `1.0.0-rc.3` 升级至 **`1.0.0-rc.4`**（坐标 `upload-file-core` / `upload-file-store-redis`，core 手工装配，接口契约与组件一致；starter 曾因 `javax.servlet` 与 Spring Boot 4 不兼容未启用）：
   - confirm 改用 rc.4 稳定读接口 `getTask(identifier).finalPath` 定位合并产物（`FileService.resolveMergedProduct`），并兼容旧版目录约定回退；
@@ -47,8 +47,8 @@
 
 ### Added
 
-- 决策记录：`docs/design/ADR-001-upload-file-starter-jakarta.md`（rc.5 提供 jakarta starter 后是否迁移：不迁移，理由/约束/撤销条件成文，README/TSDD/PRD 同步引用）。
-- 迁移预案：`docs/design/UPGRADE-upload-file-starter-jakarta.md`（若 ADR-001 撤销条件触发，迁到 `upload-file-spring-boot-starter-jakarta` 的变更清单 C1~C8 / 契约差异表 / X1 审计迁移 / 开放问题 / 验收与回滚，ADR-001 §6 已挂接）。
+- 决策记录：`docs/D08-ADR-001-upload-file-starter-jakarta.md`（rc.5 提供 jakarta starter 后是否迁移：不迁移，理由/约束/撤销条件成文，README/TSDD/PRD 同步引用）。
+- 迁移预案：`docs/D09-UPGRADE-upload-file-starter-jakarta.md`（若 ADR-001 撤销条件触发，迁到 `upload-file-spring-boot-starter-jakarta` 的变更清单 C1~C8 / 契约差异表 / X1 审计迁移 / 开放问题 / 验收与回滚，ADR-001 §6 已挂接）。
 - 测试：`UploadFileErrorMappingTest`（组件 rc.4 类型化异常 → HTTP 状态码映射回归，含 AccessDenied→403）；`FileUploadFlowTest` 增补 confirm/取消用例。
 - 授权/回收组件接入类：`UploadOwnerAccessControl`（AccessControl SPI）、`UploadFileConfig` 内组件 `StorageCleanupService` 接线。
 - 已知缺口收口（TESTCASES §17）：`GlobalExceptionAuditTest`（X1 403 审计）、`FileUploadFlowTest` 恢复负例（X3）、`AuthServiceTest` 停用口径用例（X2）。
