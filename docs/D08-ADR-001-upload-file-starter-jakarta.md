@@ -6,7 +6,7 @@
 | 日期 | 2026-09（2026-09 rc.6 迁移；rc.7/rc.8 升级收口） |
 | 状态 | 已接受 - 已迁移（Accepted - Migrated），现行组件版本 `1.0.0-rc.8` |
 | 决策 | **rc.5 时暂不迁移**；**rc.6 起迁移**到 `upload-file-spring-boot-starter-jakarta`，删除手工装配 `UploadFileConfig` 与自研 `UploadController`，`/upload` 由组件 `UploadServlet` 承载 |
-| 关联文档 | [TSDD §6.1/§11](TSDD-PathFinder-v1.0.0.md)、[PRD F8](PRD-PathFinder-v1.0.0.md)、[PLAN §13/§14/§15/§16](PLAN-PathFinder-v1.0.0.md)、[UPGRADE](UPGRADE-upload-file-starter-jakarta.md)、README、CHANGELOG |
+| 关联文档 | [TSDD §6.1/§11](D02-TSDD-PathFinder-v1.0.0.md)、[PRD F8](D01-PRD-PathFinder-v1.0.0.md)、[PLAN §13/§14/§15/§16](D03-PLAN-PathFinder-v1.0.0.md)、[UPGRADE](D09-UPGRADE-upload-file-starter-jakarta.md)、README、CHANGELOG |
 | 触发事件 | 组件仓库发布 `1.0.0-rc.5`（新增 `upload-file-spring-boot-starter-jakarta`，消除 javax 阻塞）；随后 `1.0.0-rc.6` 为 path-finder 的 ADR/UPGRADE 评估专门补齐商业化 HTTP 层可控接入能力，**本 ADR §6 撤销条件被触发** |
 
 ## 1. 背景
@@ -61,7 +61,7 @@ starter 的 `uploadFileServletRegistration` / `downloadFileServletRegistration` 
 - `AccessControlListener` + `UploadErrorRenderer` SPI，使审计/错误体可对接本工程约定（§3.3）；
 - `endpoint.enabled` / `multipart.strategy` 提供端点与 multipart 上限的显式控制（§3.1/§3.3）。
 
-故**改采方案 B**：迁移到 `upload-file-spring-boot-starter-jakarta:1.0.0-rc.6`，删除 `UploadFileConfig` / `UploadController`；`/upload` 由 `UploadServlet` 承载；`/download` 保持默认关闭（最小暴露，业务下载仍走 `/api/file/download/{token}`）。执行清单与验收见 [UPGRADE](UPGRADE-upload-file-starter-jakarta.md)。
+故**改采方案 B**：迁移到 `upload-file-spring-boot-starter-jakarta:1.0.0-rc.6`，删除 `UploadFileConfig` / `UploadController`；`/upload` 由 `UploadServlet` 承载；`/download` 保持默认关闭（最小暴露，业务下载仍走 `/api/file/download/{token}`）。执行清单与验收见 [UPGRADE](D09-UPGRADE-upload-file-starter-jakarta.md)。
 
 ## 6. 影响与撤销条件（rc.5 评估原文，保留备查）
 
@@ -73,7 +73,7 @@ starter 的 `uploadFileServletRegistration` / `downloadFileServletRegistration` 
   3. 组件 HTTP 层错误体/审计扩展与本工程 `ApiResponse` 约定合并（上游支持自定义错误渲染）；
   4. 多实例化改造需要 starter 级调度/注册能力且 core 手工装配无法平价补齐。
 
-  > 信号触发后按 [UPGRADE-upload-file-starter-jakarta.md](UPGRADE-upload-file-starter-jakarta.md) 执行：含删改清单（C1~C8）、契约差异表、X1 审计迁移、回归与回滚方案，迁移执行前先拍板其 §9 开放问题（O1~O5）。
+  > 信号触发后按 [UPGRADE](D09-UPGRADE-upload-file-starter-jakarta.md) 执行：含删改清单（C1~C8）、契约差异表、X1 审计迁移、回归与回滚方案，迁移执行前先拍板其 §9 开放问题（O1~O5）。
 
 ## 7. rc.6 迁移执行结果（2026-09）
 
