@@ -6,10 +6,10 @@
 | 日期 | 2026-09（2026-09 执行：rc.6 迁移完成，rc.7/rc.8 升级收口） |
 | 状态 | 已执行（Executed）——rc.6 满足 ADR-001 撤销条件后按本文实施，结果见 §14；rc.8 升级见 §15 |
 | 目标组件 | `cn.chenxinjie:upload-file-spring-boot-starter-jakarta`（Spring Boot 4.0.0+ / jakarta，版本由 `upload-file-bom:1.0.0-rc.8` 统一管理；rc.6 完成迁移，rc.7/rc.8 升级收口） |
-| 关联 | [ADR-001](ADR-001-upload-file-starter-jakarta.md)（决策）、[TSDD §6](TSDD-PathFinder-v1.0.0.md)（集成设计）、[PRD F8](../PRD-PathFinder-v1.0.0.md)、[PLAN §13/§14/§15/§16](PLAN-PathFinder-v1.0.0.md)、TESTCASES |
+| 关联 | [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md)（决策）、[TSDD §6](D02-TSDD-PathFinder-v1.0.0.md)（集成设计）、[PRD F8](D01-PRD-PathFinder-v1.0.0.md)、[PLAN §13/§14/§15/§16](D03-PLAN-PathFinder-v1.0.0.md)、TESTCASES |
 | 当前基线 | 已迁移并升级：`upload-file-spring-boot-starter-jakarta` + `upload-file-store-redis`（`upload-file-bom:1.0.0-rc.8`；原基线 core 手工装配 `UploadFileConfig` + `UploadController` 已删除） |
 
-> 阅读前提：先读 [ADR-001](ADR-001-upload-file-starter-jakarta.md)。本文档不重述“为何不迁”，只回答“**如果要迁，改什么、怎么验收、怎么回滚**”。
+> 阅读前提：先读 [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md)。本文档不重述“为何不迁”，只回答“**如果要迁，改什么、怎么验收、怎么回滚**”。
 
 ---
 
@@ -235,8 +235,8 @@ public void check(String identifier, String action, String token) {
 
 ## 12. 文档与登记（C8，迁移完成后）
 
-- [ADR-001](ADR-001-upload-file-starter-jakarta.md)：状态改「已接受 - 已迁移」，§6 撤销条件改为回滚说明；
-- `README` / `docs/design/TSDD §6.1/§11` / `docs/PRD F8`：坐标改 starter-jakarta，删除「未启用」表述，补 `/download` 处置与 401 语义；
+- [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md)：状态改「已接受 - 已迁移」，§6 撤销条件改为回滚说明；
+- `README` / `docs/D02-TSDD §6.1/§11` / `docs/D01-PRD F8`：坐标改 starter-jakarta，删除「未启用」表述，补 `/download` 处置与 401 语义；
 - `CHANGELOG`：Unreleased 新增「core 手工装配 → starter-jakarta」升级条目；
 - `PLAN`：追加 §14 任务卡（引用本文）；
 - `docs/DEV-JOURNEY-REFLECTION.md`：盲点/ADR 收口补记；
@@ -246,9 +246,9 @@ public void check(String identifier, String action, String token) {
 
 ## 13. 关联文档
 
-- [ADR-001](ADR-001-upload-file-starter-jakarta.md)（决策与撤销条件）
-- [TSDD §6](TSDD-PathFinder-v1.0.0.md) / [PRD F8](../PRD-PathFinder-v1.0.0.md)（集成设计）
-- [PLAN §13/§14](PLAN-PathFinder-v1.0.0.md)（rc.5 升级补丁 / rc.6 迁移任务卡）
+- [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md)（决策与撤销条件）
+- [TSDD §6](D02-TSDD-PathFinder-v1.0.0.md) / [PRD F8](D01-PRD-PathFinder-v1.0.0.md)（集成设计）
+- [PLAN §13/§14](D03-PLAN-PathFinder-v1.0.0.md)（rc.5 升级补丁 / rc.6 迁移任务卡）
 - 组件仓库：`upload-file-servlet-jakarta`（UploadServlet/DownloadServlet 契约）、`upload-file-spring-boot-starter-jakarta`（UploadFileAutoConfiguration/UploadFileProperties）、Boot 4 demo（`example/upload-file-boot4-demo`）
 
 ---
