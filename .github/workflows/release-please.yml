@@ -1,0 +1,20 @@
+name: release-please
+
+# main 上累积 conventional commits，自动维护发版 PR（chore(main): release x.y.z）。
+# 合并发版 PR → 自动 tag + GitHub Release（生产发布点）。
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
