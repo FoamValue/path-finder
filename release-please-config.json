@@ -1,0 +1,18 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "simple",
+  "include-component-in-tag": false,
+  "tag-prefix": "v",
+  "packages": {
+    ".": {
+      "package-name": "pathfinder",
+      "extra-files": [
+        { "type": "pom", "path": "server/pom.xml" },
+        { "type": "json", "path": "frontend/package.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "frontend/package-lock.json", "jsonpath": "$.version" },
+        { "type": "json", "path": "frontend/package-lock.json", "jsonpath": "$.packages[''].version" }
+      ],
+      "pull-request-footer": "> ⚠️ 合并本发版 PR 前人工核对：\n> 1. README.md / README.zh-CN.md 中如引用产品版本（如 docs/Dxx-*-vX.Y.Z.md 文件名）需同步更新；\n> 2. 如引入 CHANGELOG.zh-CN.md，需人工补中文条目。\n> 注意：README 中 `cn.chenxinjie:upload-file:x.y.z` 为外部依赖版本，勿随本产品版本修改。"
+    }
+  }
+}
