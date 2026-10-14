@@ -51,7 +51,7 @@ It supports chunked upload with resume and de-dup, range-based resume download, 
 | Large-file component | `cn.chenxinjie:upload-file:1.0.0` (Spring Boot Starter jakarta, MIT) |
 | Deployment | Docker Compose · nginx:alpine · TLS |
 
-> The `upload-file` component provides chunked upload, resume, MD5 de-dup, async merge, Range download, storage cleanup, and optional global quota. Its integration history and upgrade notes live in [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) and [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md).
+> The `upload-file` component provides chunked upload, resume, MD5 de-dup, async merge, Range download, storage cleanup, and optional global quota. Its integration history and upgrade notes live in [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md) and [UPGRADE](docs/D09-UPGRADE-upload-file-starter-jakarta.md).
 
 ## Project Structure
 
@@ -224,14 +224,14 @@ Coverage gates (see PRD §6): overall backend line coverage ≥ 80%, core module
 
 | Document | Description |
 |---|---|
-| [PRD](docs/PRD-PathFinder-v1.0.0.md) | Product requirements (user stories / functional requirements / data-permission model) |
-| [USER-MANUAL](docs/USER-MANUAL-PathFinder-v1.0.0.md) | End-user manual |
-| [TSDD](docs/design/TSDD-PathFinder-v1.0.0.md) | Technical design (architecture / database / APIs / security / component integration / caching / deployment) |
-| [PLAN](docs/design/PLAN-PathFinder-v1.0.0.md) | Agile iteration plan (sprints / task cards / definition of done) |
-| [TESTCASES](docs/design/TESTCASES-PathFinder-v1.0.0.md) | Test cases (110+, incl. data-permission matrix) |
-| [REVIEW](docs/design/REVIEW-PathFinder-v1.0.0.md) | Production-release baseline review & revision log |
-| [ADR-001](docs/design/ADR-001-upload-file-starter-jakarta.md) | Decision record: jakarta starter migration of the upload component |
-| [UPGRADE](docs/design/UPGRADE-upload-file-starter-jakarta.md) | Migration checklist (coordinates / contract / audit / acceptance & rollback) |
+| [PRD](docs/D01-PRD-PathFinder-v1.0.0.md) | Product requirements (user stories / functional requirements / data-permission model) |
+| [USER-MANUAL](docs/D06-USER-MANUAL-PathFinder-v1.0.0.md) | End-user manual |
+| [TSDD](docs/D02-TSDD-PathFinder-v1.0.0.md) | Technical design (architecture / database / APIs / security / component integration / caching / deployment) |
+| [PLAN](docs/D03-PLAN-PathFinder-v1.0.0.md) | Agile iteration plan (sprints / task cards / definition of done) |
+| [TESTCASES](docs/D04-TESTCASES-PathFinder-v1.0.0.md) | Test cases (110+, incl. data-permission matrix) |
+| [REVIEW](docs/D05-REVIEW-PathFinder-v1.0.0.md) | Production-release baseline review & revision log |
+| [ADR-001](docs/D08-ADR-001-upload-file-starter-jakarta.md) | Decision record: jakarta starter migration of the upload component |
+| [UPGRADE](docs/D09-UPGRADE-upload-file-starter-jakarta.md) | Migration checklist (coordinates / contract / audit / acceptance & rollback) |
 | [CHANGELOG](CHANGELOG.md) | Version history |
 
 ## License

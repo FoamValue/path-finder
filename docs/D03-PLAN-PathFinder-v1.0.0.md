@@ -173,7 +173,7 @@
 
 ## 13. 追加：组件 rc.5 升级补丁与 jakarta starter 决策（v1.0.0 基线之上，2026-09）
 
-> 背景：组件仓库推进至 `1.0.0-rc.5`（相对 rc.4 的 core/store 逻辑零改动，实质新增 `upload-file-servlet-jakarta` / `upload-file-spring-boot-starter-jakarta` 与 Boot 4 demo），而业务工程仍锁在 `1.0.0-rc.4`——盲点 1「自我升级滞后」再次出现。rc.4 收口已验证该流程（见 §12），本次按同一流程闭环，并把「组件新增 jakarta starter 后是否迁移」这一新决策点用 ADR 成文（`docs/design/ADR-001-upload-file-starter-jakarta.md`），避免「已知说明式」的债无人评估。
+> 背景：组件仓库推进至 `1.0.0-rc.5`（相对 rc.4 的 core/store 逻辑零改动，实质新增 `upload-file-servlet-jakarta` / `upload-file-spring-boot-starter-jakarta` 与 Boot 4 demo），而业务工程仍锁在 `1.0.0-rc.4`——盲点 1「自我升级滞后」再次出现。rc.4 收口已验证该流程（见 §12），本次按同一流程闭环，并把「组件新增 jakarta starter 后是否迁移」这一新决策点用 ADR 成文（`docs/D08-ADR-001-upload-file-starter-jakarta.md`），避免「已知说明式」的债无人评估。
 
 | 任务 | 内容 | 关联 | 状态 |
 |---|---|---|---|
@@ -188,7 +188,7 @@
 
 ## 14. 追加：组件 rc.6 升级与迁移到官方 starter-jakarta（v1.0.0 基线之上，2026-09）
 
-> 背景：组件 `1.0.0-rc.6` 是「商业化 HTTP 层可接入」版本，专门回应本工程 [ADR-001](ADR-001-upload-file-starter-jakarta.md)/[UPGRADE](UPGRADE-upload-file-starter-jakarta.md) 评估——`/download` 默认关闭、`AccessControl.decide()` 返回 403、`AccessControlListener` 审计、`UploadErrorRenderer`/`endpoint`/`http`/`multipart` 可控。ADR-001 §6 撤销条件 #2/#3 满足，故执行迁移预案（C1~C8）。
+> 背景：组件 `1.0.0-rc.6` 是「商业化 HTTP 层可接入」版本，专门回应本工程 [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md)/[UPGRADE](D09-UPGRADE-upload-file-starter-jakarta.md) 评估——`/download` 默认关闭、`AccessControl.decide()` 返回 403、`AccessControlListener` 审计、`UploadErrorRenderer`/`endpoint`/`http`/`multipart` 可控。ADR-001 §6 撤销条件 #2/#3 满足，故执行迁移预案（C1~C8）。
 
 | 任务 | 内容 | 关联 | 状态 |
 |---|---|---|---|
