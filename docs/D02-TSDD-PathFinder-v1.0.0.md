@@ -373,7 +373,7 @@ Request → Spring Security FilterChain
 
 ### 6.1 依赖
 
-**v1.0.0 实际坐标（rc.8，BOM 统一版本）**：rc.3 时代 starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容（见 §11 风险预案与 README「已知说明」）；rc.5 起组件新增 jakarta 版 starter/servlet，但经 [ADR-001](ADR-001-upload-file-starter-jakarta.md) 评估暂未启用；rc.6 组件补齐商业化 HTTP 层可控接入（`endpoint`/`http`/`multipart` 开关、`AccessControl.decide()`、`AccessControlListener`、`UploadErrorRenderer`），ADR-001 撤销条件满足，故生产代码**迁移到 `upload-file-spring-boot-starter-jakarta` + `upload-file-store-redis`**；rc.7 收口存储正确性与扩展点一致性（Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`）；rc.8（GA 前最后一批）新增 `upload-file-bom`、配额自动对账、分布式锁续租、审计上下文 `AccessContext`、starter 自动装配 `TrustedUploadService`。对外 HTTP 契约与组件完全一致（执行清单见 [UPGRADE](UPGRADE-upload-file-starter-jakarta.md)）：
+**v1.0.0 实际坐标（rc.8，BOM 统一版本）**：rc.3 时代 starter 依赖 `javax.servlet`，与 Spring Boot 4（jakarta）不兼容（见 §11 风险预案与 README「已知说明」）；rc.5 起组件新增 jakarta 版 starter/servlet，但经 [ADR-001](D08-ADR-001-upload-file-starter-jakarta.md) 评估暂未启用；rc.6 组件补齐商业化 HTTP 层可控接入（`endpoint`/`http`/`multipart` 开关、`AccessControl.decide()`、`AccessControlListener`、`UploadErrorRenderer`），ADR-001 撤销条件满足，故生产代码**迁移到 `upload-file-spring-boot-starter-jakarta` + `upload-file-store-redis`**；rc.7 收口存储正确性与扩展点一致性（Redis 索引泄漏/N+1、starter 消费 `UploadErrorRenderer`、multipart 安全默认、受信读 `TrustedUploadService`）；rc.8（GA 前最后一批）新增 `upload-file-bom`、配额自动对账、分布式锁续租、审计上下文 `AccessContext`、starter 自动装配 `TrustedUploadService`。对外 HTTP 契约与组件完全一致（执行清单见 [UPGRADE](D09-UPGRADE-upload-file-starter-jakarta.md)）：
 
 ```xml
 <dependencyManagement>
