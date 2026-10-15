@@ -13,6 +13,7 @@ SUMMARY="${GITHUB_STEP_SUMMARY:-/dev/stdout}"
 PR_JSON="$(gh api "${API}/pulls/${PR_NUMBER}")"
 PR_TITLE="$(printf '%s' "$PR_JSON" | jq -r '.title')"
 BASE_SHA="$(printf '%s' "$PR_JSON" | jq -r '.base.sha')"
+HEAD_SHA="$(printf '%s' "$PR_JSON" | jq -r '.head.sha')"
 
 mapfile -t FILES < <(gh api --paginate "${API}/pulls/${PR_NUMBER}/files" --jq '.[].filename')
 
@@ -24,9 +25,11 @@ changed() {
   return 1
 }
 
-file_has_pattern() { # file pattern → 0 含 / 1 不含
-  local file="$1" pattern="$2"
-  gh api "repos/${REPO}/contents/${file}" --jq '.content' 2>/dev/null | base64 -d | grep -Eq "$pattern"
+file_has_pattern() { # file pattern → 0 含 / 1 不含（必须读 PR head 分支的文件，默认读 main 会误判）
+  local file="$1" pattern="$2" content
+  # 先解码存变量再 grep：避免 pipefail 下 grep 提前退出令 base64 收 SIGPIPE 污染管道退出码
+  content="$(gh api "repos/${REPO}/contents/${file}?ref=${HEAD_SHA}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
+  printf '%s' "$content" | grep -Eq "$pattern"
 }
 
 echo "## PR 完备性检查" > "$SUMMARY"
