@@ -16,5 +16,8 @@ jobs:
     steps:
       - uses: googleapis/release-please-action@v5
         with:
+          # 必须用 PAT（用户身份）创建发版 PR：GITHUB_TOKEN 创建的 PR 不会触发 CI（防递归机制），
+          # 导致发版 PR 永久 BLOCKED 在 required checks 上。
+          token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: release-please-config.json
           manifest-file: .release-please-manifest.json
