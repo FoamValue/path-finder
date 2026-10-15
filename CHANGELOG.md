@@ -2,6 +2,13 @@
 
 本文件记录 PathFinder 的变更。版本遵循语义化版本，`[Unreleased]` 为尚未发布的变更；发布时把条目移入对应版本小节并打 tag。功能基线见 [README](README.md) 与 [PRD](docs/D01-PRD-PathFinder-v1.0.0.md)。
 
+## [1.0.1](https://github.com/FoamValue/path-finder/compare/v1.0.0...v1.0.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* 提高前端单测超时上限以规避 CI 偶发超时 ([#1](https://github.com/FoamValue/path-finder/issues/1)) ([5d29e5f](https://github.com/FoamValue/path-finder/commit/5d29e5f148be03b0551aa1f9062748519b264fbd))
+
 ## [Unreleased]
 
 ### Changed
