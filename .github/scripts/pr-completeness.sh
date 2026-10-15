@@ -27,9 +27,9 @@ changed() {
 
 file_has_pattern() { # file pattern → 0 含 / 1 不含（必须读 PR head 分支的文件，默认读 main 会误判）
   local file="$1" pattern="$2" content
-  # 先解码存变量再 grep：避免 pipefail 下 grep 提前退出令 base64 收 SIGPIPE 污染管道退出码
   content="$(gh api "repos/${REPO}/contents/${file}?ref=${HEAD_SHA}" --jq '.content' 2>/dev/null | base64 -d 2>/dev/null)"
-  printf '%s' "$content" | grep -Eq "$pattern"
+  # 不用 -q：-q 在首个匹配后立即退出，大文件下 printf 收 SIGPIPE 被 pipefail 判为失败
+  printf '%s' "$content" | grep -E "$pattern" > /dev/null
 }
 
 echo "## PR 完备性检查" > "$SUMMARY"
