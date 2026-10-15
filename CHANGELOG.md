@@ -2,6 +2,15 @@
 
 本文件记录 PathFinder 的变更。版本遵循语义化版本，`[Unreleased]` 为尚未发布的变更；发布时把条目移入对应版本小节并打 tag。功能基线见 [README](README.md) 与 [PRD](docs/D01-PRD-PathFinder-v1.0.0.md)。
 
+## [1.0.1](https://github.com/FoamValue/path-finder/compare/v1.0.0...v1.0.1) (2026-10-15)
+
+
+### Bug Fixes
+
+* completeness 去 grep -q 消除大文件 SIGPIPE 误判 ([#16](https://github.com/FoamValue/path-finder/issues/16)) ([11799a2](https://github.com/FoamValue/path-finder/commit/11799a2428cbf372b26da30585adde37f0798c54))
+* completeness 脚本改为读取 PR head 分支文件 ([#15](https://github.com/FoamValue/path-finder/issues/15)) ([81f5b78](https://github.com/FoamValue/path-finder/commit/81f5b785866f553a5ae637a9301c92152f93ea1d))
+* 提高前端单测超时上限以规避 CI 偶发超时 ([#1](https://github.com/FoamValue/path-finder/issues/1)) ([5d29e5f](https://github.com/FoamValue/path-finder/commit/5d29e5f148be03b0551aa1f9062748519b264fbd))
+
 ## [Unreleased]
 
 ### Changed
